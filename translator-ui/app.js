@@ -27,6 +27,7 @@ const elements = {
   reloadLibrary: document.querySelector("#reload-library"),
   saveProject: document.querySelector("#save-project"),
   exportChapter: document.querySelector("#export-chapter"),
+  preprocessChapter: document.querySelector("#preprocess-chapter"),
   prevPage: document.querySelector("#prev-page"),
   nextPage: document.querySelector("#next-page"),
   addLine: document.querySelector("#add-line"),
@@ -540,6 +541,39 @@ async function exportChapter() {
   setStatus(`Capitulo gerado: ${result.pages} pagina(s), ${result.boxesRendered} fala(s) typeset. Saida: ${where}`);
 }
 
+async function preprocessChapter() {
+  if (!state.selectedManga || !state.selectedChapter) {
+    setStatus("Abra um capitulo antes de pre-processar.");
+    return;
+  }
+
+  setToolStatus("Iniciando pre-processamento do capitulo...");
+  const start = await api("/api/preprocess-chapter", {
+    method: "POST",
+    body: JSON.stringify({ manga: state.selectedManga, chapter: state.selectedChapter })
+  });
+
+  const jobId = start.jobId;
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const job = await api(`/api/job?id=${encodeURIComponent(jobId)}`);
+
+    if (job.status === "running") {
+      setToolStatus(`Pre-processando ${job.done}/${job.total || "?"}${job.current ? ` (${job.current})` : ""}...`);
+      continue;
+    }
+
+    if (job.status === "error") {
+      setToolStatus(`Erro no pre-processo: ${job.error}`);
+      return;
+    }
+
+    setToolStatus(`Capitulo pre-processado: ${job.detectedBoxes} fala(s), ${job.suggested} sugerida(s)${job.skipped ? `, ${job.skipped} pag. ja feitas mantidas` : ""}. Recarregando...`);
+    await openChapter(state.selectedManga, state.selectedChapter);
+    return;
+  }
+}
+
 async function runOcr() {
   const page = getCurrentPage();
   if (!page) return;
@@ -694,6 +728,7 @@ function wireEvents() {
   elements.reloadLibrary.addEventListener("click", loadLibrary);
   elements.saveProject.addEventListener("click", () => saveProject().catch((error) => setStatus(error.message)));
   elements.exportChapter.addEventListener("click", () => exportChapter().catch((error) => setStatus(error.message)));
+  elements.preprocessChapter.addEventListener("click", () => preprocessChapter().catch((error) => setToolStatus(error.message)));
   elements.prevPage.addEventListener("click", () => {
     if (!state.pages.length) return;
     state.currentPageIndex = Math.max(0, state.currentPageIndex - 1);

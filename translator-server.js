@@ -33,6 +33,8 @@ const OPENAI_MODEL = process.env.OPENAI_TRANSLATOR_MODEL || "gpt-4.1-mini";
 const LIBRETRANSLATE_URL = process.env.LIBRETRANSLATE_URL || "";
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_TRANSLATOR_MODEL || "";
+// Provedor de traducao selecionavel por config (etapa plugavel): auto = cadeia completa.
+const TRANSLATOR_PROVIDER = (process.env.TRANSLATOR_PROVIDER || "auto").toLowerCase();
 
 // --- Detector de baloes (microservico Python YOLOv8-seg) ---
 const DETECTOR_URL = (process.env.DETECTOR_URL || "http://127.0.0.1:5000").replace(/\/$/, "");
@@ -1050,6 +1052,14 @@ async function translateWithOllama(text, context = {}) {
   };
 }
 
+// Registry de provedores de traducao (etapas plugaveis, trocaveis por config).
+const TRANSLATION_BACKENDS = {
+  ollama: (value, context) => translateWithOllama(value, context),
+  openai: (value) => translateWithOpenAi(value),
+  libre: (value) => translateWithLibreTranslate(value),
+  libretranslate: (value) => translateWithLibreTranslate(value)
+};
+
 async function suggestTranslation(text, context = {}) {
   const value = cleanOcrText(text);
   if (!value) {
@@ -1060,7 +1070,7 @@ async function suggestTranslation(text, context = {}) {
     };
   }
 
-  const providerErrors = [];
+  // Memoria (vetada por humano) sempre primeiro.
   const memory = await findTranslationMemory(value);
   if (memory) {
     return {
@@ -1071,31 +1081,20 @@ async function suggestTranslation(text, context = {}) {
     };
   }
 
-  try {
-    const ollama = await translateWithOllama(value, context);
-    if (ollama?.text) {
-      return { ...ollama, automatic: true };
-    }
-  } catch (error) {
-    providerErrors.push(friendlyProviderError(error.message));
-  }
+  const chain = TRANSLATOR_PROVIDER === "auto"
+    ? ["ollama", "openai", "libre"]
+    : [TRANSLATOR_PROVIDER].filter((name) => TRANSLATION_BACKENDS[name]);
 
-  try {
-    const openAi = await translateWithOpenAi(value);
-    if (openAi?.text) {
-      return { ...openAi, automatic: true };
+  const providerErrors = [];
+  for (const name of chain) {
+    try {
+      const result = await TRANSLATION_BACKENDS[name](value, context);
+      if (result?.text) {
+        return { ...result, automatic: true };
+      }
+    } catch (error) {
+      providerErrors.push(friendlyProviderError(error.message));
     }
-  } catch (error) {
-    providerErrors.push(friendlyProviderError(error.message));
-  }
-
-  try {
-    const libre = await translateWithLibreTranslate(value);
-    if (libre?.text) {
-      return { ...libre, automatic: true };
-    }
-  } catch (error) {
-    providerErrors.push(friendlyProviderError(error.message));
   }
 
   return {
@@ -1106,6 +1105,124 @@ async function suggestTranslation(text, context = {}) {
       ? `Provedor automatico indisponivel: ${providerErrors.join(" | ")}`
       : "Sugestao basica local. Para contexto melhor, rode uma IA local via Ollama ou salve correcoes para alimentar a memoria."
   };
+}
+
+// === Fila de pre-processamento por capitulo =========================
+// Roda detect + OCR + sugestao em TODAS as paginas como job em background;
+// salva o projeto pre-preenchido pro humano so revisar. Nao sobrescreve
+// paginas que ja tem caixas (trabalho humano).
+const jobs = new Map();
+
+function newBoxId() {
+  return `box-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function createJob(type, meta) {
+  const id = `job-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 6)}`;
+  const job = {
+    id,
+    type,
+    ...meta,
+    status: "running",
+    total: 0,
+    done: 0,
+    current: null,
+    detectedBoxes: 0,
+    suggested: 0,
+    skipped: 0,
+    error: null,
+    startedAt: new Date().toISOString()
+  };
+  jobs.set(id, job);
+  if (jobs.size > 20) {
+    const oldest = [...jobs.values()].sort((a, b) => a.startedAt.localeCompare(b.startedAt))[0];
+    if (oldest) jobs.delete(oldest.id);
+  }
+  return job;
+}
+
+async function preprocessChapter(job, { suggest }) {
+  try {
+    const payload = await getChapterPayload(job.manga, job.chapter);
+    const { chapterDir } = await ensureChapterReady(job.manga, job.chapter);
+    const project = await loadProject(job.manga, job.chapter);
+    project.manga = job.manga;
+    project.chapter = job.chapter;
+    project.pages = project.pages || {};
+    job.total = payload.pages.length;
+
+    const health = await ensureDetector();
+    if (!health || !health.yolo) {
+      throw new Error("Detector de baloes indisponivel para pre-processar.");
+    }
+
+    for (const page of payload.pages) {
+      job.current = page.name;
+
+      const existing = project.pages[page.name]?.boxes;
+      if (existing && existing.length) {
+        job.skipped++;
+        job.done++;
+        continue;
+      }
+
+      const imagePath = path.join(chapterDir, page.name);
+      let lines = [];
+      try {
+        const result = await detectBubbles(imagePath);
+        lines = Array.isArray(result.lines) ? result.lines : [];
+      } catch {
+        // pagina sem deteccao segue em branco
+      }
+
+      const boxes = lines.map((line, index) => ({
+        id: newBoxId(),
+        order: index + 1,
+        originalText: line.originalText || "",
+        suggestedText: "",
+        translatedText: "",
+        coverOriginal: true,
+        fontSize: 18,
+        x: line.x,
+        y: line.y,
+        width: line.width,
+        height: line.height
+      }));
+      job.detectedBoxes += boxes.length;
+
+      if (suggest) {
+        const nearby = boxes.map((box) => box.originalText).filter(Boolean);
+        for (const box of boxes) {
+          if (!box.originalText) continue;
+          try {
+            const result = await suggestTranslation(box.originalText, {
+              manga: job.manga,
+              chapter: job.chapter,
+              page: page.name,
+              nearbyLines: nearby
+            });
+            if (result?.text) {
+              box.suggestedText = result.text;
+              job.suggested++;
+            }
+          } catch {
+            // sugestao e best-effort
+          }
+        }
+      }
+
+      project.pages[page.name] = { boxes };
+      job.done++;
+    }
+
+    await saveProject(project);
+    job.status = "done";
+    job.finishedAt = new Date().toISOString();
+  } catch (error) {
+    job.status = "error";
+    job.error = error.message;
+    job.finishedAt = new Date().toISOString();
+  }
 }
 
 async function getPageImagePath(manga, chapter, fileName) {
@@ -1407,6 +1524,34 @@ const server = http.createServer(async (req, res) => {
         boxesRendered: result.boxesRendered,
         font: result.font
       });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/preprocess-chapter") {
+      const body = await readJsonBody(req);
+      const manga = String(body.manga || "").trim();
+      const chapter = String(body.chapter || "").trim();
+      const suggest = body.suggest !== false;
+
+      if (!manga || !chapter) {
+        sendError(res, 400, "Manga e capitulo sao obrigatorios");
+        return;
+      }
+
+      const job = createJob("preprocess", { manga, chapter, suggest });
+      preprocessChapter(job, { suggest }); // roda em background, nao aguarda
+      sendJson(res, 200, { ok: true, jobId: job.id });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/job") {
+      const id = url.searchParams.get("id") || "";
+      const job = jobs.get(id);
+      if (!job) {
+        sendError(res, 404, "Job nao encontrado");
+        return;
+      }
+      sendJson(res, 200, job);
       return;
     }
 

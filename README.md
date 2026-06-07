@@ -53,6 +53,7 @@ baixar um capítulo e traduzir na sequência sem copiar arquivos.
 | `DETECTOR_PYTHON` | `detector/.venv/...python` | python do venv do detector |
 | `DETECTOR_OCR` | `tesseract` | engine de OCR do detector: `tesseract` / `manga-ocr` / `none` |
 | `RENDER_FONT` | Arial Bold | fonte (.ttf) usada no typeset do capítulo exportado |
+| `TRANSLATOR_PROVIDER` | `auto` | provedor de tradução: `auto` (cadeia) / `ollama` / `openai` / `libre` |
 
 ## Detector de balões (Fase 1 — YOLOv8-seg)
 
@@ -93,9 +94,12 @@ automaticamente do HuggingFace (~50 MB). Depois é rápido.
   PNGs + **CBZ** em `traduzidos/<manga>/<capitulo>`. Só renderiza falas com tradução final
   preenchida (as não traduzidas ficam intactas). *Refino futuro: typeset por bbox mais
   apertado, hifenização, direção vertical.*
-- **Fase 3 — Modularizar o servidor** em etapas plugáveis (detecção/ocr/inpaint/render
-  trocáveis por config, inspirado no `zyddnys/manga-image-translator`) + fila de
-  pré-processamento por capítulo inteiro.
+- **Fase 3 — Pipeline plugável + fila** ✅ *implementado*: tradução por **registry
+  selecionável via `TRANSLATOR_PROVIDER`** (etapa trocável por config) e **fila de
+  pré-processamento por capítulo** — botão **"Pré-processar"** roda detecção + OCR +
+  sugestão em TODAS as páginas como job em background (`/api/preprocess-chapter` +
+  `/api/job?id=`), salvando o projeto pré-preenchido. **Não sobrescreve** páginas que já
+  têm trabalho humano. *(Refino futuro: separar o monólito em módulos `lib/`.)*
 - **Fase 4 — Memória inteligente** ✅ *implementado*: **gate de qualidade** (só reusa
   tradução vetada por humano — quando o revisor escreveu/alterou a fala; auto-sugestões
   apenas aceitas não viram memória), **busca fuzzy** (casa apesar de pontuação/ruído do
