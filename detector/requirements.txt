@@ -1,0 +1,14 @@
+# Detecção de balões + OCR. Instale num venv:
+#   cd tradutor/detector
+#   python -m venv .venv && .venv\Scripts\activate   (Windows)
+#   pip install -r requirements.txt
+#
+# Core de detecção de balões. torch (CPU) entra junto do ultralytics.
+# Para GPU NVIDIA (mais rápido), veja README: instalar torch do índice cu121.
+ultralytics>=8.1.0
+huggingface_hub>=0.20.0
+Pillow>=10.0.0
+pytesseract>=0.3.10   # OCR_ENGINE=tesseract — pequeno; precisa do binário Tesseract instalado p/ funcionar (ideal inglês->PT-BR)
+
+# OCR de japonês (opcional, pesado ~ baixa transformers+modelo). Descomente se traduzir raws JP:
+# manga-ocr>=0.1.11   # OCR_ENGINE=manga-ocr

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tradutor de Manga</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <p class="eyebrow">MVP Local</p>
+          <h1>Tradutor de Manga</h1>
+          <p class="muted">Use a pasta de entrada para os mangas originais, abra um capitulo e monte a traducao em PT-BR pagina por pagina.</p>
+        </div>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Biblioteca</h2>
+            <button id="reload-library" class="ghost-button" type="button">Atualizar</button>
+          </div>
+          <div id="library-status" class="status">Lendo mangas...</div>
+          <div id="folder-info" class="folder-info"></div>
+          <div id="library-list" class="library-list"></div>
+        </section>
+      </aside>
+
+      <main class="workspace">
+        <header class="workspace-header">
+          <div>
+            <p class="eyebrow">Projeto</p>
+            <h2 id="chapter-title">Nenhum capitulo aberto</h2>
+            <p id="chapter-subtitle" class="muted small">Abra um capitulo para revisar as falas por pagina.</p>
+          </div>
+          <div class="workspace-actions">
+            <button id="prev-page" class="icon-button" type="button" title="Pagina anterior">‹</button>
+            <button id="next-page" class="icon-button" type="button" title="Proxima pagina">›</button>
+            <button id="save-project" class="primary-button" type="button">Salvar</button>
+            <button id="export-chapter" class="primary-button" type="button" title="Inpaint + typeset + CBZ">Gerar capítulo</button>
+          </div>
+        </header>
+
+        <section class="viewer-grid">
+          <div class="viewer-panel">
+            <div id="page-meta" class="status">Selecione um capitulo na lateral.</div>
+            <div id="viewer-stage" class="viewer-stage empty">
+              <div id="page-canvas" class="page-canvas">
+                <img id="page-image" alt="Pagina do manga">
+                <div id="box-layer" class="box-layer"></div>
+              </div>
+            </div>
+          </div>
+
+          <aside class="editor-panel">
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Paginas</h2>
+                <span id="page-counter" class="pill">0 / 0</span>
+              </div>
+              <div id="page-source" class="status">Aguardando capitulo.</div>
+              <div id="page-list" class="page-list"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Falas</h2>
+                <span id="line-counter" class="pill">0</span>
+              </div>
+
+              <div class="tool-row">
+                <button id="add-line" class="ghost-button" type="button">Adicionar</button>
+                <button id="run-ocr" class="ghost-button" type="button">Detectar</button>
+                <button id="suggest-page" class="ghost-button" type="button">Sugerir</button>
+                <button id="apply-suggestions" class="ghost-button" type="button">Aplicar</button>
+                <button id="copy-originals" class="ghost-button" type="button">Copiar</button>
+              </div>
+
+              <div id="tool-status" class="status">Abra uma pagina para comecar.</div>
+              <div id="translation-list" class="translation-list"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Revisao</h2>
+                <button id="remove-box" class="ghost-button danger" type="button">Remover</button>
+              </div>
+
+              <form id="box-form" class="box-form">
+                <label>
+                  Texto original
+                  <textarea id="original-text" rows="4" placeholder="Cole ou escreva o texto original"></textarea>
+                </label>
+
+                <label>
+                  Sugestao
+                  <textarea id="suggested-text" rows="4" placeholder="Sugestao gerada ou revisada"></textarea>
+                </label>
+
+                <label>
+                  Final PT-BR
+                  <textarea id="translated-text" rows="5" placeholder="Traducao final aprovada"></textarea>
+                </label>
+
+                <div class="option-grid">
+                  <label class="check-option">
+                    <input id="cover-original" type="checkbox" checked>
+                    Cobrir original
+                  </label>
+                  <label>
+                    Fonte
+                    <input id="font-size" type="number" min="8" max="72" step="1" value="18">
+                  </label>
+                </div>
+
+                <details class="details-panel">
+                  <summary>Posicao na pagina</summary>
+                  <div class="coord-grid">
+                    <label>
+                      X (%)
+                      <input id="box-x" type="number" min="0" max="100" step="0.1">
+                    </label>
+                    <label>
+                      Y (%)
+                      <input id="box-y" type="number" min="0" max="100" step="0.1">
+                    </label>
+                    <label>
+                      Largura (%)
+                      <input id="box-width" type="number" min="1" max="100" step="0.1">
+                    </label>
+                    <label>
+                      Altura (%)
+                      <input id="box-height" type="number" min="1" max="100" step="0.1">
+                    </label>
+                  </div>
+                </details>
+              </form>
+            </section>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

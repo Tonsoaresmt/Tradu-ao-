@@ -1,0 +1,5 @@
+Traduza mangas para PT-BR natural.
+Preserve nomes proprios.
+Use fala curta quando o balao for pequeno.
+Evite explicar piadas ou contexto dentro da fala.
+Mantenha o tom emocional da cena.

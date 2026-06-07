@@ -1,0 +1,16 @@
+{
+  "name": "tradutor-manga",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "translator-server.js",
+  "description": "Tradutor de manga com revisao humana (human-in-the-loop). Subprojeto separado do manga-downloader.",
+  "scripts": {
+    "start": "node translator-server.js",
+    "check": "node --check translator-server.js"
+  },
+  "dependencies": {
+    "extract-zip": "^2.0.1",
+    "fs-extra": "^11.1.1"
+  }
+}
