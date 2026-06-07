@@ -184,12 +184,10 @@ def find_font():
     return None  # PIL cai na fonte default
 
 
-def wrap_text(text, font, max_width):
+def soft_wrap(text, font, max_width):
+    """Quebra por palavras inteiras (nao corta palavra)."""
     words = str(text).split()
-    if not words:
-        return ""
-    lines = []
-    current = ""
+    lines, current = [], ""
     for word in words:
         test = (current + " " + word).strip()
         if not current or font.getbbox(test)[2] <= max_width:
@@ -199,23 +197,70 @@ def wrap_text(text, font, max_width):
             current = word
     if current:
         lines.append(current)
-    return "\n".join(lines)
+    return lines
 
 
-def fit_text(draw, text, font_path, box_w, box_h, max_size=44):
+def _max_line_width(lines, font):
+    return max((font.getbbox(line)[2] for line in lines), default=0)
+
+
+def _hard_break(lines, font, max_width):
+    """Ultimo recurso: corta palavras que ainda estouram a largura."""
+    out = []
+    for line in lines:
+        while font.getbbox(line)[2] > max_width and len(line) > 1:
+            cut = len(line)
+            while cut > 1 and font.getbbox(line[:cut])[2] > max_width:
+                cut -= 1
+            out.append(line[:cut])
+            line = line[cut:]
+        out.append(line)
+    return out
+
+
+def fit_text(draw, text, font_path, box_w, box_h, max_size=48):
+    """Encolhe a fonte ate o texto (palavras inteiras) caber no balao;
+    so corta palavra como ultimo recurso (fonte minima)."""
     from PIL import ImageFont
-    size = max(10, min(int(box_h * 0.95), max_size))
-    font = ImageFont.truetype(font_path, size) if font_path else ImageFont.load_default()
-    wrapped = wrap_text(text, font, box_w)
-    bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, align="center", spacing=2)
-    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    while font_path and size > 9 and (tw > box_w or th > box_h):
-        size -= 1
-        font = ImageFont.truetype(font_path, size)
-        wrapped = wrap_text(text, font, box_w)
+    size = max(9, min(int(box_h * 0.95), max_size))
+    while size >= 9:
+        font = ImageFont.truetype(font_path, size) if font_path else ImageFont.load_default()
+        lines = soft_wrap(text, font, box_w)
+        wrapped = "\n".join(lines)
         bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, align="center", spacing=2)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    return font, wrapped, tw, th
+        if _max_line_width(lines, font) <= box_w and th <= box_h:
+            return font, wrapped, tw, th
+        if not font_path:
+            break
+        size -= 1
+    font = ImageFont.truetype(font_path, 9) if font_path else ImageFont.load_default()
+    lines = _hard_break(soft_wrap(text, font, box_w), font, box_w)
+    wrapped = "\n".join(lines)
+    bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, align="center", spacing=2)
+    return font, wrapped, bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+
+def bubble_inner_rect(crop_bgr):
+    """Acha a area branca interna do balao dentro do recorte (x,y,w,h) ou None."""
+    import cv2
+    import numpy as np
+    if crop_bgr is None or crop_bgr.size == 0:
+        return None
+    h, w = crop_bgr.shape[:2]
+    if h < 6 or w < 6:
+        return None
+    gray = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2GRAY)
+    _, bright = cv2.threshold(gray, 188, 255, cv2.THRESH_BINARY)
+    # fecha os buracos deixados pelo texto pra unir a area branca do balao
+    bright = cv2.morphologyEx(bright, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
+    cnts, _ = cv2.findContours(bright, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        return None
+    c = max(cnts, key=cv2.contourArea)
+    if cv2.contourArea(c) < 0.22 * w * h:
+        return None  # pouca area branca -> balao colorido/efeito: usa fallback
+    return cv2.boundingRect(c)
 
 
 def render_page(image_path, boxes, out_path, font_path):
@@ -263,15 +308,22 @@ def render_page(image_path, boxes, out_path, font_path):
         if not text:
             continue
         x1, y1, x2, y2 = px(box)
-        # Recua pra dentro: a caixa do YOLO é maior que a área branca do balão,
-        # então renderiza no ~72% central pra não vazar nas bordas.
-        inset_x = int((x2 - x1) * 0.14)
-        inset_y = int((y2 - y1) * 0.14)
-        bx1, by1 = x1 + inset_x, y1 + inset_y
-        bw, bh = (x2 - x1) - 2 * inset_x, (y2 - y1) - 2 * inset_y
+        # Encaixa o texto na AREA BRANCA real do balao (a caixa do YOLO costuma
+        # ser mais larga que o balao). Sem area branca clara -> recua 14%.
+        inner = bubble_inner_rect(img[y1:y2, x1:x2]) if box.get("coverOriginal") is not False else None
+        if inner:
+            ix, iy, iw, ih = inner
+            m = max(2, int(min(iw, ih) * 0.08))
+            bx1, by1 = x1 + ix + m, y1 + iy + m
+            bw, bh = iw - 2 * m, ih - 2 * m
+        else:
+            inset_x = int((x2 - x1) * 0.14)
+            inset_y = int((y2 - y1) * 0.14)
+            bx1, by1 = x1 + inset_x, y1 + inset_y
+            bw, bh = (x2 - x1) - 2 * inset_x, (y2 - y1) - 2 * inset_y
         if bw < 8 or bh < 8:
             continue
-        font, wrapped, tw, th = fit_text(draw, text, font_path, bw, bh)
+        font, wrapped, tw, th = fit_text(draw, text, font_path, bw, bh, max_size=max(28, int(H * 0.05)))
         tx = bx1 + (bw - tw) / 2
         ty = by1 + (bh - th) / 2
         sw = max(1, getattr(font, "size", 12) // 18)
