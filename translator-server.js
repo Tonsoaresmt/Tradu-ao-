@@ -216,6 +216,22 @@ async function renderExport(payload) {
   return response.json();
 }
 
+async function renderOne(payload) {
+  const response = await fetch(`${DETECTOR_URL}/render-one`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(120000)
+  });
+
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}));
+    throw new Error(detail.error || `Previa falhou: HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
 function stopDetector() {
   if (detectorChild) {
     detectorChild.kill();
@@ -1523,6 +1539,38 @@ const server = http.createServer(async (req, res) => {
         pages: result.pages,
         boxesRendered: result.boxesRendered,
         font: result.font
+      });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/preview-page") {
+      const body = await readJsonBody(req);
+      const manga = String(body.manga || "").trim();
+      const chapter = String(body.chapter || "").trim();
+      const page = String(body.page || "").trim();
+      const boxes = Array.isArray(body.boxes) ? body.boxes : [];
+
+      if (!manga || !chapter || !page) {
+        sendError(res, 400, "Manga, capitulo e pagina sao obrigatorios");
+        return;
+      }
+
+      const health = await ensureDetector().catch(() => null);
+      if (!health) {
+        sendError(res, 503, "Renderizador indisponivel. Verifique o ambiente Python em detector/.");
+        return;
+      }
+
+      const imagePath = await getPageImagePath(manga, chapter, page);
+      const result = await renderOne({
+        imagePath,
+        boxes,
+        font: process.env.RENDER_FONT || undefined
+      });
+      sendJson(res, 200, {
+        ok: true,
+        dataUrl: result.dataUrl,
+        boxesRendered: result.boxesRendered
       });
       return;
     }

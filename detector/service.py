@@ -205,14 +205,14 @@ def _max_line_width(lines, font):
 
 
 def _hard_break(lines, font, max_width):
-    """Ultimo recurso: corta palavras que ainda estouram a largura."""
+    """Ultimo recurso: corta palavras gigantes, com hifen."""
     out = []
     for line in lines:
-        while font.getbbox(line)[2] > max_width and len(line) > 1:
+        while font.getbbox(line + "-")[2] > max_width and len(line) > 2:
             cut = len(line)
-            while cut > 1 and font.getbbox(line[:cut])[2] > max_width:
+            while cut > 2 and font.getbbox(line[:cut] + "-")[2] > max_width:
                 cut -= 1
-            out.append(line[:cut])
+            out.append(line[:cut] + "-")
             line = line[cut:]
         out.append(line)
     return out
@@ -222,8 +222,8 @@ def fit_text(draw, text, font_path, box_w, box_h, max_size=48):
     """Encolhe a fonte ate o texto (palavras inteiras) caber no balao;
     so corta palavra como ultimo recurso (fonte minima)."""
     from PIL import ImageFont
-    size = max(9, min(int(box_h * 0.95), max_size))
-    while size >= 9:
+    size = max(8, min(int(box_h * 0.95), max_size))
+    while size >= 8:
         font = ImageFont.truetype(font_path, size) if font_path else ImageFont.load_default()
         lines = soft_wrap(text, font, box_w)
         wrapped = "\n".join(lines)
@@ -234,7 +234,7 @@ def fit_text(draw, text, font_path, box_w, box_h, max_size=48):
         if not font_path:
             break
         size -= 1
-    font = ImageFont.truetype(font_path, 9) if font_path else ImageFont.load_default()
+    font = ImageFont.truetype(font_path, 8) if font_path else ImageFont.load_default()
     lines = _hard_break(soft_wrap(text, font, box_w), font, box_w)
     wrapped = "\n".join(lines)
     bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, align="center", spacing=2)
@@ -263,7 +263,7 @@ def bubble_inner_rect(crop_bgr):
     return cv2.boundingRect(c)
 
 
-def render_page(image_path, boxes, out_path, font_path):
+def render_image(image_path, boxes, font_path):
     import numpy as np
     import cv2
     from PIL import Image, ImageDraw
@@ -331,9 +331,22 @@ def render_page(image_path, boxes, out_path, font_path):
                             align="center", spacing=2, stroke_width=sw, stroke_fill="white")
         rendered += 1
 
+    return out, rendered
+
+
+def render_page(image_path, boxes, out_path, font_path):
+    out, rendered = render_image(image_path, boxes, font_path)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     out.save(out_path)
     return rendered
+
+
+def render_png_bytes(image_path, boxes, font_path):
+    import io
+    out, rendered = render_image(image_path, boxes, font_path)
+    buf = io.BytesIO()
+    out.save(buf, "PNG")
+    return buf.getvalue(), rendered
 
 
 def pack_cbz(files, cbz_path):
@@ -380,6 +393,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_detect()
         elif self.path.startswith("/export"):
             self._handle_export()
+        elif self.path.startswith("/render-one"):
+            self._handle_render_one()
         else:
             self._send(404, {"error": "rota não encontrada"})
 
@@ -433,6 +448,24 @@ class Handler(BaseHTTPRequestHandler):
             })
         except Exception as e:
             log("erro no /export:\n" + traceback.format_exc())
+            self._send(500, {"error": str(e)})
+
+    def _handle_render_one(self):
+        try:
+            body = self._read_body()
+            image_path = body.get("imagePath", "")
+            if not image_path or not os.path.exists(image_path):
+                self._send(400, {"error": f"imagem nao encontrada: {image_path}"})
+                return
+            import base64
+            png, rendered = render_png_bytes(image_path, body.get("boxes", []), body.get("font") or find_font())
+            self._send(200, {
+                "ok": True,
+                "boxesRendered": rendered,
+                "dataUrl": "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+            })
+        except Exception as e:
+            log("erro no /render-one:\n" + traceback.format_exc())
             self._send(500, {"error": str(e)})
 
 

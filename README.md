@@ -105,8 +105,13 @@ automaticamente do HuggingFace (~50 MB). Depois é rápido.
   apenas aceitas não viram memória), **busca fuzzy** (casa apesar de pontuação/ruído do
   OCR: `REUBEN?` == `REUBEN`) e **índice em memória** com cache por mtime (deixou de varrer
   todos os JSONs a cada sugestão) + **glossário por obra**.
-- **Fase 5 — Refinos**: direção vertical, estilo por personagem, hifenização, typeset por
-  bbox mais apertado, fila de pré-processamento por capítulo.
+- **Fase 5 — Refinos** ✅ *parcial*: **hifenização** de palavras gigantes, fonte mínima
+  menor (8px) e **prévia por página** (botão **"Prévia"** → renderiza a página atual com
+  inpaint+typeset e mostra na tela, sem exportar — a "leitura dupla" Original | Traduzido).
+  *Pendente: direção vertical (japonês), estilo por personagem.*
+
+> **Fluxo recomendado:** abrir capítulo → **Pré-processar** (máquina detecta+OCR+sugere
+> tudo) → revisar página a página → **Prévia** pra conferir → **Gerar capítulo** (CBZ).
 
 ### Glossário (`tradutor-manga/treino/glossario.json`)
 

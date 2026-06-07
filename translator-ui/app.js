@@ -8,7 +8,8 @@ const state = {
   currentPageIndex: 0,
   selectedBoxId: null,
   drag: null,
-  draw: null
+  draw: null,
+  previewing: false
 };
 
 const elements = {
@@ -28,6 +29,7 @@ const elements = {
   saveProject: document.querySelector("#save-project"),
   exportChapter: document.querySelector("#export-chapter"),
   preprocessChapter: document.querySelector("#preprocess-chapter"),
+  previewPage: document.querySelector("#preview-page"),
   prevPage: document.querySelector("#prev-page"),
   nextPage: document.querySelector("#next-page"),
   addLine: document.querySelector("#add-line"),
@@ -368,6 +370,8 @@ function renderBoxes() {
 
 function renderCurrentPage() {
   const page = getCurrentPage();
+  state.previewing = false;
+  if (elements.previewPage) elements.previewPage.textContent = "Previa";
   renderPageList();
 
   if (!page) {
@@ -574,6 +578,47 @@ async function preprocessChapter() {
   }
 }
 
+async function previewPage() {
+  const page = getCurrentPage();
+  if (!page) {
+    setToolStatus("Abra uma pagina antes da previa.");
+    return;
+  }
+
+  if (state.previewing) {
+    state.previewing = false;
+    renderCurrentPage();
+    return;
+  }
+
+  setToolStatus("Gerando previa da pagina (inpaint + typeset)...");
+  const boxes = orderedBoxes().map((box) => ({
+    x: box.x,
+    y: box.y,
+    width: box.width,
+    height: box.height,
+    translatedText: box.translatedText || box.suggestedText || "",
+    coverOriginal: box.coverOriginal !== false
+  }));
+
+  const result = await api("/api/preview-page", {
+    method: "POST",
+    body: JSON.stringify({
+      manga: state.selectedManga,
+      chapter: state.selectedChapter,
+      page: page.name,
+      boxes
+    })
+  });
+
+  state.previewing = true;
+  elements.previewPage.textContent = "Editar";
+  elements.pageImage.onload = null;
+  elements.pageImage.src = result.dataUrl;
+  elements.boxLayer.innerHTML = "";
+  setToolStatus(`Previa: ${result.boxesRendered} fala(s) renderizada(s). Clique 'Editar' para voltar.`);
+}
+
 async function runOcr() {
   const page = getCurrentPage();
   if (!page) return;
@@ -729,6 +774,7 @@ function wireEvents() {
   elements.saveProject.addEventListener("click", () => saveProject().catch((error) => setStatus(error.message)));
   elements.exportChapter.addEventListener("click", () => exportChapter().catch((error) => setStatus(error.message)));
   elements.preprocessChapter.addEventListener("click", () => preprocessChapter().catch((error) => setToolStatus(error.message)));
+  elements.previewPage.addEventListener("click", () => previewPage().catch((error) => setToolStatus(error.message)));
   elements.prevPage.addEventListener("click", () => {
     if (!state.pages.length) return;
     state.currentPageIndex = Math.max(0, state.currentPageIndex - 1);
