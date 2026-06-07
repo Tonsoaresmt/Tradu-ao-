@@ -339,7 +339,8 @@ async function ensureTranslatorDirs() {
 
   if (!await fs.pathExists(TRAINING_GLOSSARY_PATH)) {
     await fs.writeJson(TRAINING_GLOSSARY_PATH, {
-      terms: []
+      terms: [],
+      porObra: {}
     }, { spaces: 2 });
   }
 }
@@ -728,6 +729,11 @@ function memoryKey(text) {
   return cleanOcrText(text).toLowerCase();
 }
 
+// Chave "fuzzy": so letras/numeros — casa apesar de pontuacao/ruido do OCR.
+function alnumKey(text) {
+  return cleanOcrText(text).toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
 function exampleKey(example) {
   return [
     memoryKey(example.manga),
@@ -777,12 +783,20 @@ async function recordTrainingExamples(project) {
       const translatedText = cleanOcrText(box.translatedText);
       if (!originalText || !translatedText) continue;
 
+      // Gate de qualidade (ideia do quality_score do onyx): "human" quando o
+      // revisor escreveu/alterou a fala; "auto" quando so aceitou a sugestao.
+      const suggestedText = cleanOcrText(box.suggestedText);
+      const quality = (!suggestedText || suggestedText.toLowerCase() !== translatedText.toLowerCase())
+        ? "human"
+        : "auto";
+
       const example = {
         manga: project.manga,
         chapter: project.chapter,
         page: pageName,
         originalText,
         translatedText,
+        quality,
         context: pageContext,
         box: {
           x: box.x,
@@ -810,9 +824,28 @@ async function loadTrainingStyle() {
   return fs.readFile(TRAINING_STYLE_PATH, "utf8").catch(() => "");
 }
 
-async function loadTrainingGlossary() {
+async function loadGlossaryRaw() {
   const glossary = await fs.readJson(TRAINING_GLOSSARY_PATH).catch(() => ({ terms: [] }));
-  return Array.isArray(glossary.terms) ? glossary.terms : [];
+  return {
+    terms: Array.isArray(glossary.terms) ? glossary.terms : [],
+    porObra: glossary.porObra && typeof glossary.porObra === "object" ? glossary.porObra : {}
+  };
+}
+
+async function loadTrainingGlossary() {
+  return (await loadGlossaryRaw()).terms;
+}
+
+// Termos globais + os especificos da obra atual (glossario por obra).
+async function glossaryForManga(manga) {
+  const { terms, porObra } = await loadGlossaryRaw();
+  const own = [];
+  for (const [key, list] of Object.entries(porObra)) {
+    if (memoryKey(key) === memoryKey(manga) && Array.isArray(list)) {
+      own.push(...list);
+    }
+  }
+  return [...terms, ...own];
 }
 
 function scoreExample(example, text, context = {}) {
@@ -826,6 +859,7 @@ function scoreExample(example, text, context = {}) {
 
   if (memoryKey(context.manga) && memoryKey(context.manga) === memoryKey(example.manga)) score += 3;
   if (memoryKey(context.chapter) && memoryKey(context.chapter) === memoryKey(example.chapter)) score += 1;
+  if (example.quality === "human" || example.quality === undefined) score += 1;
   return score;
 }
 
@@ -842,42 +876,45 @@ async function findRelevantTrainingExamples(text, context = {}, limit = 6) {
     .map((item) => item.example);
 }
 
+// Indice em memoria construido a partir do exemplos.jsonl (que ja agrega todas as
+// falas salvas). Reconstroi so quando o arquivo muda (mtime) — sem varrer JSONs.
+let memoryIndexCache = { mtime: -1, byExact: new Map(), byAlnum: new Map() };
+
+async function getMemoryIndex() {
+  const stat = await fs.stat(TRAINING_EXAMPLES_PATH).catch(() => null);
+  const mtime = stat ? stat.mtimeMs : 0;
+  if (mtime === memoryIndexCache.mtime) return memoryIndexCache;
+
+  const byExact = new Map();
+  const byAlnum = new Map();
+
+  for (const example of await loadTrainingExamples()) {
+    const translatedText = cleanOcrText(example.translatedText);
+    if (!translatedText) continue;
+    // Gate: so reusa traducao vetada por humano (quality_score do onyx).
+    // Exemplos antigos (sem o campo) sao tratados como confiaveis.
+    if (example.quality && example.quality !== "human") continue;
+
+    const exact = memoryKey(example.originalText);
+    if (exact && !byExact.has(exact)) byExact.set(exact, translatedText);
+    const alnum = alnumKey(example.originalText);
+    if (alnum && !byAlnum.has(alnum)) byAlnum.set(alnum, translatedText);
+  }
+
+  memoryIndexCache = { mtime, byExact, byAlnum };
+  return memoryIndexCache;
+}
+
 async function findTranslationMemory(text) {
   const key = memoryKey(text);
   if (!key) return null;
 
-  for (const example of await loadTrainingExamples()) {
-    if (memoryKey(example.originalText) === key && example.translatedText) {
-      return cleanOcrText(example.translatedText);
-    }
-  }
+  const index = await getMemoryIndex();
+  if (index.byExact.has(key)) return index.byExact.get(key);
 
-  if (!await fs.pathExists(PROJECTS_DIR)) return null;
-
-  const stack = [PROJECTS_DIR];
-  while (stack.length) {
-    const currentDir = stack.pop();
-    const entries = await fs.readdir(currentDir, { withFileTypes: true }).catch(() => []);
-
-    for (const entry of entries) {
-      const fullPath = path.join(currentDir, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(fullPath);
-        continue;
-      }
-
-      if (!entry.name.endsWith(".json")) continue;
-
-      const project = await fs.readJson(fullPath).catch(() => null);
-      for (const page of Object.values(project?.pages || {})) {
-        for (const box of page?.boxes || []) {
-          if (memoryKey(box.originalText) === key && box.translatedText) {
-            return cleanOcrText(box.translatedText);
-          }
-        }
-      }
-    }
-  }
+  // Fuzzy leve: ignora pontuacao/ruido do OCR (REUBEN? casa com REUBEN).
+  const alnum = alnumKey(text);
+  if (alnum && index.byAlnum.has(alnum)) return index.byAlnum.get(alnum);
 
   return null;
 }
@@ -964,7 +1001,7 @@ async function translateWithOllama(text, context = {}) {
   if (!model) return null;
 
   const style = await loadTrainingStyle();
-  const glossary = await loadTrainingGlossary();
+  const glossary = await glossaryForManga(context.manga);
   const examples = await findRelevantTrainingExamples(text, context);
   const nearby = Array.isArray(context.nearbyLines)
     ? context.nearbyLines.filter(Boolean).join("\n")
@@ -1165,10 +1202,17 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/api/training") {
       const examples = await loadTrainingExamples();
-      const glossary = await loadTrainingGlossary();
+      const glossaryRaw = await loadGlossaryRaw();
+      const humanExamples = examples.filter((ex) => !ex.quality || ex.quality === "human").length;
+      const glossaryPorObra = Object.fromEntries(
+        Object.entries(glossaryRaw.porObra).map(([obra, list]) => [obra, Array.isArray(list) ? list.length : 0])
+      );
       sendJson(res, 200, {
         examples: examples.length,
-        glossaryTerms: glossary.length,
+        humanExamples,
+        autoExamples: examples.length - humanExamples,
+        glossaryTerms: glossaryRaw.terms.length,
+        glossaryPorObra,
         paths: {
           directory: TRAINING_DIR,
           examples: TRAINING_EXAMPLES_PATH,

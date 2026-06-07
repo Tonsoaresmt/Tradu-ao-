@@ -96,9 +96,29 @@ automaticamente do HuggingFace (~50 MB). Depois é rápido.
 - **Fase 3 — Modularizar o servidor** em etapas plugáveis (detecção/ocr/inpaint/render
   trocáveis por config, inspirado no `zyddnys/manga-image-translator`) + fila de
   pré-processamento por capítulo inteiro.
-- **Fase 4 — Memória melhor**: `quality_score` (só reusar tradução aprovada por humano),
-  busca fuzzy e índice (parar de varrer todos os JSONs a cada chamada).
-- **Fase 5 — Refinos**: direção vertical, estilo por personagem, glossário por obra.
+- **Fase 4 — Memória inteligente** ✅ *implementado*: **gate de qualidade** (só reusa
+  tradução vetada por humano — quando o revisor escreveu/alterou a fala; auto-sugestões
+  apenas aceitas não viram memória), **busca fuzzy** (casa apesar de pontuação/ruído do
+  OCR: `REUBEN?` == `REUBEN`) e **índice em memória** com cache por mtime (deixou de varrer
+  todos os JSONs a cada sugestão) + **glossário por obra**.
+- **Fase 5 — Refinos**: direção vertical, estilo por personagem, hifenização, typeset por
+  bbox mais apertado, fila de pré-processamento por capítulo.
+
+### Glossário (`tradutor-manga/treino/glossario.json`)
+
+Termos globais + por obra são injetados no prompt da IA. Formato:
+
+```json
+{
+  "terms": [ { "source": "Marine", "target": "Marinha", "note": "opcional" } ],
+  "porObra": {
+    "One Piece": [ { "source": "Yonko", "target": "Yonkou" } ]
+  }
+}
+```
+
+`GET /api/training` mostra `humanExamples` / `autoExamples` (quantas falas vetadas por
+humano já alimentam a memória) e `glossaryPorObra`.
 
 Referências estudadas: `zyddnys/manga-image-translator` (pipeline modular completo) e
 `thradnea/onyx-manga-translator` (pipeline enxuto: YOLO + manga-ocr + cv2.inpaint + TM SQLite).
