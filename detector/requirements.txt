@@ -4,7 +4,12 @@
 #   pip install -r requirements.txt
 #
 # Core de detecção de balões. torch (CPU) entra junto do ultralytics.
-# Para GPU NVIDIA (mais rápido), veja README: instalar torch do índice cu121.
+# GPU NVIDIA (recomendado, MUITO mais rápido p/ YOLO + EasyOCR) — instale o torch
+# com CUDA por cima (par compatível torch 2.6.0 / torchvision 0.21.0):
+#   .venv\Scripts\python -m pip install --force-reinstall --no-deps \
+#     torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124
+# Confira: python -c "import torch; print(torch.cuda.is_available())"  -> True
+# (RTX 2060 SUPER validado, ~0.8s/página detect+OCR. EasyOCR liga a GPU sozinho.)
 ultralytics>=8.1.0
 huggingface_hub>=0.20.0
 Pillow>=10.0.0

@@ -112,8 +112,14 @@ def get_ocr(engine):
             return obj
         if engine == "easyocr":
             import easyocr
-            log("carregando easyocr (IA, baixa o modelo de EN na 1a vez)...")
-            reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+            gpu = False
+            try:
+                import torch
+                gpu = bool(torch.cuda.is_available())
+            except Exception:
+                gpu = False
+            log(f"carregando easyocr (IA, gpu={gpu}; baixa o modelo de EN na 1a vez)...")
+            reader = easyocr.Reader(["en"], gpu=gpu, verbose=False)
             _state["ocr_engines"][engine] = reader
             log("easyocr pronto.")
             return reader
