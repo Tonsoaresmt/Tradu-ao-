@@ -23,7 +23,16 @@ export async function exportChapter() {
   });
 
   const where = result.cbz || result.outputDir;
-  setStatus(`Capitulo gerado: ${result.pages} pagina(s), ${result.boxesRendered} fala(s) typeset. Saida: ${where}`);
+  // Verificacao de qualidade (QC): avisa se algum balao nao ficou no padrao.
+  const issues = Array.isArray(result.qcIssues) ? result.qcIssues : [];
+  if (issues.length) {
+    const amostra = issues.slice(0, 6)
+      .map((i) => `pag ${i.page} balao ${i.box}: ${i.problems.join("; ")}`)
+      .join(" | ");
+    setStatus(`Capitulo gerado: ${result.pages} pag, ${result.boxesRendered} fala(s). ⚠ ${issues.length} balao(oes) FORA do padrao (revise): ${amostra}. Saida: ${where}`);
+  } else {
+    setStatus(`Capitulo gerado: ${result.pages} pag, ${result.boxesRendered} fala(s) — todos no padrao ✅. Saida: ${where}`);
+  }
 }
 
 export async function preprocessChapter() {

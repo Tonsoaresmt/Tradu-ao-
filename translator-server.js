@@ -1759,7 +1759,9 @@ const server = http.createServer(async (req, res) => {
         cbz: result.cbz,
         pages: result.pages,
         boxesRendered: result.boxesRendered,
-        font: result.font
+        font: result.font,
+        qcOk: result.qcOk !== false,
+        qcIssues: result.qcIssues || []
       });
       return;
     }

@@ -424,6 +424,67 @@ def fit_text(draw, text, font_path, box_w, box_h, min_size=MIN_FONT_BASE, max_si
     return font, wrapped, bbox[2] - bbox[0], bbox[3] - bbox[1], spacing
 
 
+def fit_text_ellipse(draw, text, font_path, box_w, box_h,
+                     min_size=MIN_FONT_BASE, max_size=64, k=0.92):
+    """Lettering profissional: inscreve o texto na ELIPSE do balão. Cada linha é
+    centralizada e sua largura respeita a largura da elipse NAQUELA altura — gera
+    o formato oval (linhas curtas em cima/baixo, largas no meio), como nas scans
+    profissionais, e NUNCA encosta na borda. Retorna (font, wrapped, tw, th, spacing)
+    ou None se não couber de jeito nenhum (aí o chamador usa o encaixe retangular)."""
+    from PIL import ImageFont
+    words = str(text).split()
+    if not words:
+        return None
+    a = (box_w / 2.0) * k          # semi-eixo horizontal util
+    b = (box_h / 2.0) * k          # semi-eixo vertical util
+    if a < 4 or b < 4:
+        return None
+
+    size = max(min_size, min(int(box_h * 0.9), max_size))
+    while size >= min_size:
+        font = ImageFont.truetype(font_path, size) if font_path else ImageFont.load_default()
+        spacing = _line_spacing(size)
+        pitch = size + spacing
+        max_lines = max(1, int((2 * b) // pitch))
+        for n in range(1, max_lines + 1):
+            block_h = n * size + (n - 1) * spacing
+            if block_h > 2 * b:
+                break
+            top = -block_h / 2.0
+            # largura util da elipse no centro vertical de cada linha
+            avail = []
+            for j in range(n):
+                yc = top + j * pitch + size / 2.0
+                r = 1.0 - (yc / b) ** 2
+                avail.append((2.0 * a * (r ** 0.5)) if r > 0 else 0.0)
+            # encaixe guloso respeitando o cap de largura de cada linha
+            lines = [""] * n
+            idx = 0
+            ok = True
+            for w in words:
+                if idx >= n:
+                    ok = False
+                    break
+                cand = (lines[idx] + " " + w).strip()
+                if font.getbbox(cand)[2] <= avail[idx]:
+                    lines[idx] = cand
+                elif lines[idx]:
+                    idx += 1
+                    if idx >= n or font.getbbox(w)[2] > avail[idx]:
+                        ok = False
+                        break
+                    lines[idx] = w
+                else:
+                    ok = False  # palavra sozinha não cabe na linha estreita
+                    break
+            if ok and all(lines):   # usou exatamente as n linhas, todas cheias
+                wrapped = "\n".join(lines)
+                bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, align="center", spacing=spacing)
+                return font, wrapped, bbox[2] - bbox[0], bbox[3] - bbox[1], spacing
+        size -= 1
+    return None
+
+
 def bubble_inner_rect(crop_bgr):
     """Acha a area branca interna do balao dentro do recorte (x,y,w,h) ou None."""
     import cv2
@@ -488,54 +549,62 @@ def render_image(image_path, boxes, font_path):
     out = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
     draw = ImageDraw.Draw(out)
     rendered = 0
+    issues = []
     for box in boxes:
         text = str(box.get("translatedText", "")).strip()
         if not text:
             continue
+        text = text.upper()                 # lettering de scan: CAIXA ALTA
         btype = (box.get("type") or "fala").lower()
         is_sfx = btype == "sfx"
+        is_bubble = btype in ("fala", "pensamento")
         x1, y1, x2, y2 = px(box)
 
+        # Area base do balao: area branca real (ou a caixa toda como fallback).
         if is_sfx:
-            # SFX nao e balao: usa a caixa toda (a arte foi preservada).
-            bx1, by1, bw, bh = x1, y1, (x2 - x1), (y2 - y1)
+            ax1, ay1, aw, ah = x1, y1, (x2 - x1), (y2 - y1)
         else:
-            # Area base: area branca real do balao (ou a caixa toda como fallback).
             inner = bubble_inner_rect(img[y1:y2, x1:x2]) if box.get("coverOriginal") is not False else None
             if inner:
                 ix, iy, iw, ih = inner
                 ax1, ay1, aw, ah = x1 + ix, y1 + iy, iw, ih
             else:
                 ax1, ay1, aw, ah = x1, y1, (x2 - x1), (y2 - y1)
-            # MARGEM DE SEGURANCA: o texto NAO pode encostar na borda do balao.
-            # O balao (fala/pensamento) e OVAL -> precisa de recuo maior que uma
-            # caixa retangular (narracao/grito), senao o texto bate na curva.
-            mfrac = 0.13 if btype in ("fala", "pensamento") else 0.07
-            mx, my = int(aw * mfrac), int(ah * mfrac)
-            bx1, by1 = ax1 + mx, ay1 + my
-            bw, bh = aw - 2 * mx, ah - 2 * my
-        if bw < 8 or bh < 8:
+        if aw < 8 or ah < 8:
             continue
 
-        # Parametros por tipo de caixa (a MARGEM ja veio do recuo explicito acima;
-        # aqui o 'fill' so deixa um respiro fino dentro da area segura).
         if btype == "grito":
-            fill, max_font, stroke_div = 0.94, max(44, int(H * 0.085)), 7
+            max_font, stroke_div, fill = max(44, int(H * 0.085)), 7, 0.9
         elif is_sfx:
-            fill, max_font, stroke_div = 0.88, max(22, int(H * 0.05)), 6
+            max_font, stroke_div, fill = max(22, int(H * 0.05)), 6, 0.9
         elif btype == "narracao":
-            fill, max_font, stroke_div = 0.92, max(30, int(H * 0.05)), 18
+            max_font, stroke_div, fill = max(30, int(H * 0.05)), 18, 0.92
         else:  # fala / pensamento
-            fill, max_font, stroke_div = 0.92, max(34, int(H * 0.06)), 16
-
+            max_font, stroke_div, fill = max(34, int(H * 0.06)), 16, 0.92
         min_font = max(MIN_FONT_BASE, int(H * 0.016))
-        font, wrapped, tw, th, spacing = fit_text(
-            draw, text, font_path, bw, bh,
-            min_size=min_font, max_size=max_font, fill=fill
-        )
-        # centraliza o bloco de texto na area util (centro visual)
-        tx = bx1 + (bw - tw) / 2
-        ty = by1 + (bh - th) / 2
+
+        # 1a opcao p/ BALAO: encaixe ELIPTICO (formato oval, padrao profissional).
+        method = "rect"
+        res = None
+        if is_bubble:
+            res = fit_text_ellipse(draw, text, font_path, aw, ah,
+                                   min_size=min_font, max_size=max_font, k=0.9)
+            if res:
+                method = "ellipse"
+                fx1, fy1, fw, fh = ax1, ay1, aw, ah
+        if not res:
+            # Caixa retangular (narracao/grito/sfx) ou fallback do balao: recuo
+            # de seguranca + encaixe retangular balanceado.
+            mfrac = 0.0 if is_sfx else (0.12 if is_bubble else 0.07)
+            mx, my = int(aw * mfrac), int(ah * mfrac)
+            fx1, fy1, fw, fh = ax1 + mx, ay1 + my, aw - 2 * mx, ah - 2 * my
+            res = fit_text(draw, text, font_path, fw, fh,
+                           min_size=min_font, max_size=max_font, fill=fill)
+
+        font, wrapped, tw, th, spacing = res
+        # centraliza o bloco na area (centro visual do balao)
+        tx = fx1 + (fw - tw) / 2
+        ty = fy1 + (fh - th) / 2
         sw = max(1, getattr(font, "size", 14) // stroke_div)
         if is_sfx or btype == "grito":
             sw = max(2, sw)  # contorno forte pra ler sobre a arte
@@ -543,22 +612,35 @@ def render_image(image_path, boxes, font_path):
                             align="center", spacing=spacing, stroke_width=sw, stroke_fill="white")
         rendered += 1
 
-    return out, rendered
+        # ---- QC: confere se ficou no padrao (dentro do balao, ocupacao ok) ----
+        problems = []
+        if tw > fw + 2 or th > fh + 2:
+            problems.append("texto transborda o balao")
+        if getattr(font, "size", 99) <= min_font and (tw > fw * 0.97 or th > fh * 0.97):
+            problems.append("nao coube nem na fonte minima (texto longo demais)")
+        if (th / float(ah) if ah else 0) < 0.20:
+            problems.append("texto pequeno demais para o balao")
+        if is_bubble and method == "rect":
+            problems.append("nao encaixou no formato oval (caiu no retangular)")
+        if problems:
+            issues.append({"box": box.get("order") or rendered, "type": btype, "problems": problems})
+
+    return out, rendered, issues
 
 
 def render_page(image_path, boxes, out_path, font_path):
-    out, rendered = render_image(image_path, boxes, font_path)
+    out, rendered, issues = render_image(image_path, boxes, font_path)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     out.save(out_path)
-    return rendered
+    return rendered, issues
 
 
 def render_png_bytes(image_path, boxes, font_path):
     import io
-    out, rendered = render_image(image_path, boxes, font_path)
+    out, rendered, issues = render_image(image_path, boxes, font_path)
     buf = io.BytesIO()
     out.save(buf, "PNG")
-    return buf.getvalue(), rendered
+    return buf.getvalue(), rendered, issues
 
 
 def pack_cbz(files, cbz_path):
@@ -644,13 +726,17 @@ class Handler(BaseHTTPRequestHandler):
                 return
             written = []
             total_boxes = 0
+            qc = []   # verificacao: baloes que NAO ficaram no padrao
             for page in pages:
                 image_path = page.get("imagePath", "")
                 if not image_path or not os.path.exists(image_path):
                     continue
                 out_name = page.get("outName") or (os.path.splitext(os.path.basename(image_path))[0] + ".png")
                 out_path = os.path.join(output_dir, out_name)
-                total_boxes += render_page(image_path, page.get("boxes", []), out_path, font_path)
+                rendered, issues = render_page(image_path, page.get("boxes", []), out_path, font_path)
+                total_boxes += rendered
+                for it in issues:
+                    qc.append({"page": out_name, **it})
                 written.append(out_path)
             cbz_out = pack_cbz(written, cbz_path) if (cbz_path and written) else None
             self._send(200, {
@@ -660,6 +746,8 @@ class Handler(BaseHTTPRequestHandler):
                 "outputDir": output_dir,
                 "cbz": cbz_out,
                 "font": font_path,
+                "qcIssues": qc,
+                "qcOk": len(qc) == 0,
             })
         except Exception as e:
             log("erro no /export:\n" + traceback.format_exc())
@@ -673,10 +761,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(400, {"error": f"imagem nao encontrada: {image_path}"})
                 return
             import base64
-            png, rendered = render_png_bytes(image_path, body.get("boxes", []), body.get("font") or find_font())
+            png, rendered, issues = render_png_bytes(image_path, body.get("boxes", []), body.get("font") or find_font())
             self._send(200, {
                 "ok": True,
                 "boxesRendered": rendered,
+                "qcIssues": issues,
+                "qcOk": len(issues) == 0,
                 "dataUrl": "data:image/png;base64," + base64.b64encode(png).decode("ascii")
             })
         except Exception as e:
