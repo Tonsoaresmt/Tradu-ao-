@@ -124,6 +124,34 @@ def get_ocr(engine):
     return None
 
 
+def _prep_for_tesseract(pil_image):
+    """Prepara o recorte para o Tesseract: cinza -> AMPLIA (texto pequeno) ->
+    binariza (Otsu, texto preto em fundo branco) -> borda branca. Sem isso o
+    Tesseract erra muito em lettering pequeno/estilizado de mangá."""
+    import numpy as np
+    import cv2
+    from PIL import Image
+    g = np.array(pil_image.convert("L"))
+    h, w = g.shape[:2]
+    if max(h, w) < 1000:                       # texto fica grande o bastante p/ o OCR
+        s = 1000.0 / max(h, w)
+        g = cv2.resize(g, (max(1, int(w * s)), max(1, int(h * s))), interpolation=cv2.INTER_CUBIC)
+    g = cv2.bilateralFilter(g, 5, 40, 40)      # suaviza ruido preservando borda das letras
+    th = cv2.threshold(g, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+    if (th == 0).mean() > 0.55:                # fundo escuro (texto branco) -> inverte
+        th = cv2.bitwise_not(th)
+    th = cv2.copyMakeBorder(th, 16, 16, 16, 16, cv2.BORDER_CONSTANT, value=255)
+    return Image.fromarray(th)
+
+
+def _tesseract_text(pil_image, psm):
+    import pytesseract
+    import re
+    text = pytesseract.image_to_string(pil_image, lang=OCR_LANG, config=f"--oem 1 --psm {psm}")
+    text = re.sub(r"[|\\_~{}\[\]<>]", "", text)   # ruído comum de OCR
+    return " ".join(text.split()).strip()
+
+
 def ocr_crop(engine, pil_image):
     """Roda OCR num recorte de balão com o engine pedido. Retorna texto limpo (ou '')."""
     ocr = get_ocr(engine)
@@ -133,9 +161,12 @@ def ocr_crop(engine, pil_image):
         if engine == "manga-ocr":
             return (ocr(pil_image) or "").strip()
         if engine == "tesseract":
-            import pytesseract
-            text = pytesseract.image_to_string(pil_image, lang=OCR_LANG)
-            return " ".join(text.split()).strip()
+            prepped = _prep_for_tesseract(pil_image)
+            cands = [_tesseract_text(prepped, 6)]    # PSM 6: bloco uniforme (bom p/ balão)
+            if len(cands[0]) < 3:                    # texto curto: tenta outros modos
+                cands.append(_tesseract_text(prepped, 7))   # 7: linha única
+                cands.append(_tesseract_text(prepped, 11))  # 11: texto esparso
+            return max(cands, key=len)
     except Exception as e:
         log(f"OCR falhou num recorte: {e}")
     return ""
@@ -194,10 +225,10 @@ def detect(image_path, engine=None):
         for (x1, y1, x2, y2), conf in zip(xyxy, confs):
             x1, y1, x2, y2 = float(x1), float(y1), float(x2), float(y2)
             crop = image.crop((int(x1), int(y1), int(x2), int(y2)))
-            text = ocr_crop(engine, crop)
             # Aperta a caixa na AREA BRANCA do balao + classifica o tipo (forma).
             bx1, by1, bx2, by2 = x1, y1, x2, y2
             btype = "fala"
+            inner = None
             try:
                 import numpy as np
                 import cv2
@@ -207,9 +238,23 @@ def detect(image_path, engine=None):
                     ix, iy, iw, ih = inner
                     bx1, by1 = x1 + ix, y1 + iy
                     bx2, by2 = x1 + ix + iw, y1 + iy + ih
-                btype = classify_box(crop_bgr, text)
+                btype = classify_box(crop_bgr, "")
             except Exception:
                 pass
+            # OCR na AREA INTERNA do balão (sem o fundo ao redor, que confunde o
+            # Tesseract); se não vier nada, tenta o recorte inteiro do YOLO.
+            cw, ch = crop.size
+            ocr_src = crop
+            if inner:
+                ix, iy, iw, ih = inner
+                pad = 4
+                ocr_src = crop.crop((
+                    max(0, int(ix - pad)), max(0, int(iy - pad)),
+                    min(cw, int(ix + iw + pad)), min(ch, int(iy + ih + pad))
+                ))
+            text = ocr_crop(engine, ocr_src)
+            if not text and ocr_src is not crop:
+                text = ocr_crop(engine, crop)
             lines.append({
                 "originalText": text,
                 "confidence": round(conf * 100),

@@ -500,7 +500,8 @@ async function getChapterPayload(manga, chapter) {
 function cleanOcrText(value) {
   return String(value || "")
     .replace(/\s+/g, " ")
-    .replace(/[|}{[\]]/g, "")
+    .replace(/[|}{[\]\\_~]/g, "")   // ruído comum de OCR (barras, chaves, sublinhados)
+    .replace(/\s+/g, " ")
     .trim();
 }
 
