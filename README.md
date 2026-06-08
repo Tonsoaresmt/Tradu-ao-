@@ -8,6 +8,13 @@ máquina sugere, o humano confere, edita e aprova cada fala antes de sair.
 
 ## Como rodar
 
+**Jeito fácil (Windows):** dê dois cliques em **`INICIAR-TRADUTOR.bat`**. Ele sobe o
+servidor e abre o navegador sozinho. Deixe a janela preta aberta enquanto traduz; feche-a
+para encerrar. O trabalho **salva sozinho a cada ~10s e ao fechar a aba** (auto-save), além
+do botão **Salvar**.
+
+**Manual:**
+
 ```bash
 cd tradutor
 npm install          # só na primeira vez (ou se mover a pasta pra fora do repo)

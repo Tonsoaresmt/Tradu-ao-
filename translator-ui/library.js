@@ -2,6 +2,7 @@
 import { state, elements } from "./state.js";
 import { api } from "./api.js";
 import { renderCurrentPage, setStatus, setToolStatus, toolSummary } from "./editor.js";
+import { markChapterSaved } from "./autosave.js";
 
 export function renderFolders(folders) {
   elements.folderInfo.innerHTML = "";
@@ -119,6 +120,7 @@ export async function openChapter(manga, chapter) {
       : "Fonte: pasta de imagens";
     renderLibrary();
     renderCurrentPage();
+    markChapterSaved();
   } catch (error) {
     elements.chapterTitle.textContent = "Nenhum capitulo aberto";
     elements.chapterSubtitle.textContent = "Abra um capitulo para revisar as falas por pagina.";
@@ -142,6 +144,7 @@ export async function saveProject() {
     })
   });
 
+  markChapterSaved();
   const trained = result.training?.updated || 0;
   setStatus(trained
     ? `Projeto salvo. ${trained} exemplo(s) adicionados ao treino.`

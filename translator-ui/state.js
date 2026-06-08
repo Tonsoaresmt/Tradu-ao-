@@ -30,6 +30,7 @@ export const elements = {
   boxLayer: document.querySelector("#box-layer"),
   reloadLibrary: document.querySelector("#reload-library"),
   saveProject: document.querySelector("#save-project"),
+  autosaveIndicator: document.querySelector("#autosave-indicator"),
   exportChapter: document.querySelector("#export-chapter"),
   preprocessChapter: document.querySelector("#preprocess-chapter"),
   previewPage: document.querySelector("#preview-page"),

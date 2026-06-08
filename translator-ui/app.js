@@ -18,6 +18,7 @@ import { loadLibrary, saveProject } from "./library.js";
 import { runOcr, suggestPage, applySuggestions, acceptConfident, copyOriginals } from "./translator.js";
 import { previewPage } from "./preview.js";
 import { exportChapter, preprocessChapter } from "./export.js";
+import { initAutosave } from "./autosave.js";
 
 function wireEvents() {
   elements.reloadLibrary.addEventListener("click", loadLibrary);
@@ -101,3 +102,4 @@ function wireEvents() {
 
 wireEvents();
 loadLibrary();
+initAutosave();

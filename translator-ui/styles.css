@@ -627,6 +627,7 @@ textarea {
 .icon-button { background: var(--surface-2); color: var(--ink); }
 .folder-chip { background: var(--surface); color: var(--muted); }
 .pill { background: var(--surface-2); color: var(--muted); }
+.autosave { font-style: italic; opacity: 0.85; min-width: 64px; text-align: right; }
 .manga-card,
 .chapter-button,
 .page-button,
