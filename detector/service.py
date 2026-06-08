@@ -311,9 +311,12 @@ RENDER_FONT = os.environ.get("RENDER_FONT", "")
 def find_font():
     if RENDER_FONT and os.path.exists(RENDER_FONT):
         return RENDER_FONT
-    # Fonte de lettering de manga empacotada (estilo scanlation) tem prioridade.
     here = os.path.dirname(os.path.abspath(__file__))
-    for name in ("anime_ace.ttf", "anime_ace_3.ttf", "comic_shanns_2.ttf"):
+    # IMPORTANTE (PT-BR): comic_shanns_2 tem os ACENTOS corretos. As fontes
+    # anime_ace.ttf/anime_ace_3.ttf afirmam ter os caracteres no cmap, mas
+    # mapeiam os acentuados (Ê Ã Ç É ...) pra glifos ERRADOS (cirílico/grego),
+    # entao saem como lixo em PT-BR — NAO usar no auto-pick.
+    for name in ("comic_shanns_2.ttf",):
         cand = os.path.join(here, "fonts", name)
         if os.path.exists(cand):
             return cand
