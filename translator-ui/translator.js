@@ -124,13 +124,23 @@ export async function copyOriginals() {
 
 // Tradução automática da página atual (se ainda não tiver caixas): detecta +
 // OCR + traduz e já aplica como tradução final, pro humano só revisar.
-export async function autoTranslatePage() {
-  const page = getCurrentPage();
-  if (!page) return;
-  const record = getCurrentPageRecord();
-  if (record.boxes && record.boxes.length) return; // já processada
+// Traduz UMA página específica (não "a atual"). Como detecção + tradução são
+// assíncronas e demoradas, o usuário pode navegar enquanto roda; por isso tudo
+// é escrito no registro DAQUELA página e só renderizamos se o usuário ainda
+// estiver olhando para ela. Assim a tradução nunca "vaza" para a página errada
+// e nenhuma página fica em branco por causa de corrida.
+export async function autoTranslatePage(page) {
+  page = page || getCurrentPage();
+  if (!page) return false;
 
-  setToolStatus("Detectando os balões...");
+  const pages = state.project.pages || (state.project.pages = {});
+  const record = pages[page.name] || (pages[page.name] = { boxes: [] });
+  if (record.boxes && record.boxes.length) return false; // já processada
+
+  const onThisPage = () => getCurrentPage()?.name === page.name;
+  const status = (msg) => { if (onThisPage()) setToolStatus(msg); };
+
+  status("Detectando os balões...");
   const result = await api("/api/ocr-page", {
     method: "POST",
     body: JSON.stringify({
@@ -141,8 +151,8 @@ export async function autoTranslatePage() {
     })
   });
   if (!result.available || !Array.isArray(result.lines)) {
-    setToolStatus(result.message || "Detecção indisponível.");
-    return;
+    status(result.message || "Detecção indisponível.");
+    return false;
   }
 
   record.boxes = result.lines.map((line, index) => createBox({
@@ -151,16 +161,18 @@ export async function autoTranslatePage() {
     suggestedText: "",
     translatedText: ""
   }));
-  normalizeBoxes();
-  renderCurrentPage(); // mostra os baloes posicionados + texto original JA (sem esperar a traducao)
+  if (onThisPage()) {
+    normalizeBoxes();
+    renderCurrentPage(); // mostra os baloes posicionados + texto original JA
+  }
 
   const toTranslate = record.boxes.filter((box) => box.originalText);
   if (!toTranslate.length) {
-    setToolStatus(`${record.boxes.length} balão(ões) detectado(s).`);
-    return;
+    status(`${record.boxes.length} balão(ões) detectado(s).`);
+    return true;
   }
 
-  setToolStatus(`Traduzindo ${toTranslate.length} fala(s)... (pode revisar enquanto isso)`);
+  status(`Traduzindo ${toTranslate.length} fala(s)...`);
   const nearby = record.boxes.map((box) => box.originalText).filter(Boolean);
   const sug = await api("/api/suggest-translation", {
     method: "POST",
@@ -183,8 +195,9 @@ export async function autoTranslatePage() {
     }
   }
 
-  renderCurrentPage();
-  setToolStatus(`Página traduzida: ${record.boxes.length} fala(s). Revise o que precisar.`);
+  if (onThisPage()) renderCurrentPage();
+  status(`Página traduzida: ${record.boxes.length} fala(s). Revise o que precisar.`);
+  return true;
 }
 
 function bestOverlap(box, oldBoxes) {

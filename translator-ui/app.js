@@ -5,6 +5,7 @@ import {
   renderTranslationList,
   applyZoom,
   addBox,
+  getCurrentPage,
   getCurrentPageRecord,
   getSelectedBox,
   orderedBoxes,
@@ -75,21 +76,35 @@ function wireEvents() {
     elements.toggleAdvanced.classList.toggle("on", state.advanced);
   });
 
-  // Auto-tradução: ao exibir uma página ainda sem caixas, traduz sozinho.
+  // Auto-tradução serializada e à prova de corrida.
+  // - Processa UMA página por vez (autoBusy).
+  // - Marca cada página como "processada" (mesmo com 0 balões) para não repetir
+  //   nem entrar em loop em páginas vazias.
+  // - Ao terminar, re-checa a página ATUAL: se o usuário navegou enquanto
+  //   traduzia, a nova página atual entra na fila. Páginas puladas durante a
+  //   navegação rápida são traduzidas quando você volta a elas.
+  const autoProcessed = new Set();
   let autoBusy = false;
-  window.addEventListener("page-shown", async () => {
+  async function maybeAutoTranslate() {
     if (autoBusy) return;
-    const record = getCurrentPageRecord();
-    if (record && record.boxes && record.boxes.length) return;
+    const page = getCurrentPage();
+    if (!page) return;
+    const key = `${state.selectedManga}::${state.selectedChapter}::${page.name}`;
+    const record = state.project.pages?.[page.name];
+    if ((record && record.boxes && record.boxes.length) || autoProcessed.has(key)) return;
     autoBusy = true;
+    autoProcessed.add(key);
     try {
-      await autoTranslatePage();
+      await autoTranslatePage(page);
     } catch (error) {
+      autoProcessed.delete(key); // permite tentar de novo ao revisitar
       setToolStatus(error.message);
     } finally {
       autoBusy = false;
+      maybeAutoTranslate(); // pega a página atual (pode ter mudado)
     }
-  });
+  }
+  window.addEventListener("page-shown", maybeAutoTranslate);
   elements.copyOriginals.addEventListener("click", () => copyOriginals().catch((error) => setToolStatus(error.message)));
   elements.removeBox.addEventListener("click", () => {
     const pageRecord = getCurrentPageRecord();
@@ -117,6 +132,25 @@ function wireEvents() {
     const inline = elements.boxLayer.querySelector(".translation-box.selected .box-input");
     if (inline) inline.value = box.translatedText;
     renderTranslationList();
+  });
+
+  // Copiar original / tradução (para comparar em outras ferramentas).
+  const copyToClipboard = (text) => {
+    if (!text) { setToolStatus("Nada para copiar."); return; }
+    (navigator.clipboard?.writeText(text) || Promise.reject()).then(
+      () => setToolStatus("Copiado para a área de transferência."),
+      () => setToolStatus("Não consegui copiar (permissão do navegador).")
+    );
+  };
+  elements.copyOriginalOne?.addEventListener("click", (event) => {
+    event.preventDefault();
+    const box = getSelectedBox();
+    copyToClipboard(box?.originalText || "");
+  });
+  elements.copyTranslatedOne?.addEventListener("click", (event) => {
+    event.preventDefault();
+    const box = getSelectedBox();
+    copyToClipboard(box?.translatedText || box?.suggestedText || "");
   });
   elements.boxType.addEventListener("change", () => updateSelectedBox({ type: elements.boxType.value }));
   elements.coverOriginal.addEventListener("change", () => updateSelectedBox({ coverOriginal: elements.coverOriginal.checked }));

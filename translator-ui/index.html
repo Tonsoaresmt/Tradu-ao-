@@ -106,43 +106,54 @@
               <button id="remove-box" class="ghost-button danger small" type="button" disabled>Remover</button>
             </div>
             <div id="page-meta" class="status">Selecione um capítulo.</div>
-            <div id="translation-list" class="translation-list"></div>
+            <div id="translation-list" class="fala-chips"></div>
 
-            <details class="details-panel">
+            <details id="review-details" class="details-panel">
               <summary id="review-title">Detalhes da fala</summary>
               <form id="box-form" class="box-form">
-                <label class="type-field">
-                  <span class="field-label">Tipo da caixa</span>
-                  <select id="box-type" class="ghost-select">
-                    <option value="fala">Fala (balão)</option>
-                    <option value="narracao">Narração (caixa)</option>
-                    <option value="pensamento">Pensamento</option>
-                    <option value="grito">Grito</option>
-                    <option value="sfx">SFX / onomatopeia (não cobre a arte)</option>
-                  </select>
-                </label>
-                <label class="ref-field">
-                  <span class="field-label">Original <span id="original-conf" class="conf-badge"></span></span>
-                  <textarea id="original-text" rows="2" readonly placeholder="—"></textarea>
-                </label>
+                <div class="compare-grid">
+                  <label class="ref-field">
+                    <span class="field-label">
+                      Original (detectado) <span id="original-conf" class="conf-badge"></span>
+                      <button id="copy-original-one" class="ghost-button tiny" type="button" title="Copiar o texto original">copiar</button>
+                    </span>
+                    <textarea id="original-text" rows="4" readonly placeholder="—"></textarea>
+                  </label>
+                  <label class="final-field">
+                    <span class="field-label">
+                      <strong>Tradução (PT-BR)</strong>
+                      <button id="copy-translated-one" class="ghost-button tiny" type="button" title="Copiar a tradução">copiar</button>
+                    </span>
+                    <textarea id="translated-text" rows="4" placeholder="Digite a tradução em PT-BR"></textarea>
+                  </label>
+                </div>
                 <div class="suggestion-row">
                   <span id="suggested-preview" class="muted small">Sem sugestão ainda.</span>
-                  <button id="use-suggestion" class="ghost-button small" type="button" disabled>Usar</button>
+                  <button id="use-suggestion" class="ghost-button small" type="button" disabled>Usar sugestão</button>
                 </div>
-                <label class="final-field">
-                  <span class="field-label"><strong>Tradução final</strong> — ou digite no balão</span>
-                  <textarea id="translated-text" rows="3" placeholder="Digite a tradução em PT-BR"></textarea>
-                </label>
-                <div class="option-grid">
-                  <label class="check-option"><input id="cover-original" type="checkbox" checked> Cobrir original</label>
-                  <label>Fonte <input id="font-size" type="number" min="8" max="72" step="1" value="18"></label>
-                </div>
-                <div class="coord-grid">
-                  <label>X (%)<input id="box-x" type="number" min="0" max="100" step="0.1"></label>
-                  <label>Y (%)<input id="box-y" type="number" min="0" max="100" step="0.1"></label>
-                  <label>Larg (%)<input id="box-width" type="number" min="1" max="100" step="0.1"></label>
-                  <label>Alt (%)<input id="box-height" type="number" min="1" max="100" step="0.1"></label>
-                </div>
+                <details class="details-panel inner-adv">
+                  <summary>Ajustes (tipo, fonte, posição)</summary>
+                  <label class="type-field">
+                    <span class="field-label">Tipo da caixa</span>
+                    <select id="box-type" class="ghost-select">
+                      <option value="fala">Fala (balão)</option>
+                      <option value="narracao">Narração (caixa)</option>
+                      <option value="pensamento">Pensamento</option>
+                      <option value="grito">Grito</option>
+                      <option value="sfx">SFX / onomatopeia (não cobre a arte)</option>
+                    </select>
+                  </label>
+                  <div class="option-grid">
+                    <label class="check-option"><input id="cover-original" type="checkbox" checked> Cobrir original</label>
+                    <label>Fonte <input id="font-size" type="number" min="8" max="72" step="1" value="18"></label>
+                  </div>
+                  <div class="coord-grid">
+                    <label>X (%)<input id="box-x" type="number" min="0" max="100" step="0.1"></label>
+                    <label>Y (%)<input id="box-y" type="number" min="0" max="100" step="0.1"></label>
+                    <label>Larg (%)<input id="box-width" type="number" min="1" max="100" step="0.1"></label>
+                    <label>Alt (%)<input id="box-height" type="number" min="1" max="100" step="0.1"></label>
+                  </div>
+                </details>
               </form>
             </details>
           </div>

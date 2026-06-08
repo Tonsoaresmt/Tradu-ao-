@@ -450,58 +450,42 @@ textarea {
   padding-inline: 8px;
 }
 
-.translation-list {
+/* Caixinhas numeradas das falas: grade compacta que usa a largura toda. */
+.fala-chips {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 8px;
-  max-height: 280px;
+  align-content: flex-start;
+  max-height: 132px;
   overflow: auto;
+  padding: 2px;
 }
 
-.line-item {
-  display: grid;
-  grid-template-columns: 34px 1fr;
-  gap: 10px;
-  width: 100%;
-  padding: 10px;
-  text-align: left;
+.fala-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--surface);
+  color: var(--ink);
   cursor: pointer;
+  line-height: 1;
 }
-
-.line-number {
-  width: 28px;
-  height: 28px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 999px;
-  background: rgba(31, 42, 55, 0.08);
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 700;
+.fala-chip:hover { border-color: rgba(45, 212, 191, 0.5); }
+.fala-chip .chip-num {
+  font-weight: 800;
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
 }
-
-.line-content {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+.fala-chip.done { box-shadow: inset 3px 0 0 #2ecc71; }
+.fala-chip.pending { box-shadow: inset 3px 0 0 #7f8c8d; opacity: 0.92; }
+.fala-chip.selected {
+  background: rgba(45, 212, 191, 0.18);
+  border-color: rgba(45, 212, 191, 0.7);
 }
-
-.line-content strong,
-.line-content span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.line-content strong {
-  font-size: 0.92rem;
-}
-
-.line-content span {
-  color: var(--muted);
-  font-size: 0.86rem;
-}
+.fala-chip .conf-dot { box-shadow: none; }
 
 .empty-list {
   padding: 12px;
@@ -618,6 +602,33 @@ textarea {
   padding: 1px 7px;
 }
 .conf-badge:empty { display: none; }
+
+/* Detalhe da fala: Original | Tradução lado a lado, com botões de copiar */
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.compare-grid .field-label { justify-content: space-between; }
+.compare-grid textarea {
+  width: 100%;
+  resize: vertical;
+  line-height: 1.4;
+}
+#translated-text { font-weight: 600; }
+.ghost-button.tiny {
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  border-radius: 6px;
+  margin-left: auto;
+}
+.inner-adv { margin-top: 4px; border-style: dashed; }
+.inner-adv summary { font-size: 0.82rem; font-weight: 600; }
+.inner-adv .type-field,
+.inner-adv .option-grid { margin-top: 10px; }
+@media (max-width: 1100px) {
+  .compare-grid { grid-template-columns: 1fr; }
+}
 
 /* ============ TEMA ESCURO: overrides das superfícies ============ */
 .sidebar { background: #12161c; }

@@ -2,6 +2,52 @@
 // visualizador, da lista de falas e do formulário, e manipulação das caixas.
 import { state, elements, clamp, makeId } from "./state.js";
 
+// Auto-ajuste da fonte no editor: encolhe o texto ate caber no balao (igual ao
+// resultado final), pra dar pra ler na hora em vez de cortar.
+const _measureCanvas = document.createElement("canvas");
+const _measureCtx = _measureCanvas.getContext("2d");
+
+export function fitBoxFont(text, wPx, hPx) {
+  const t = String(text || "").trim();
+  if (wPx < 8 || hPx < 8) return 12;
+  if (!t) return Math.max(10, Math.min(18, Math.floor(hPx * 0.4)));
+  const availW = wPx * 0.86;
+  const availH = hPx * 0.86;
+  let size = Math.max(9, Math.min(Math.floor(hPx * 0.7), 40));
+  for (; size >= 9; size--) {
+    _measureCtx.font = `700 ${size}px sans-serif`;
+    const words = t.split(/\s+/);
+    let lines = 1;
+    let current = "";
+    let ok = true;
+    for (const word of words) {
+      const test = current ? `${current} ${word}` : word;
+      if (_measureCtx.measureText(test).width <= availW) {
+        current = test;
+      } else {
+        if (_measureCtx.measureText(word).width > availW) { ok = false; break; }
+        lines += 1;
+        current = word;
+      }
+    }
+    if (!ok) continue;
+    if (lines * size * 1.18 <= availH) return size;
+  }
+  return 9;
+}
+
+function refitBoxFonts() {
+  const imgW = elements.pageImage.clientWidth || 1;
+  const imgH = elements.pageImage.clientHeight || 1;
+  for (const node of elements.boxLayer.children) {
+    const input = node.querySelector(".box-input");
+    if (!input) continue;
+    const wp = (parseFloat(node.style.width) || 20) / 100;
+    const hp = (parseFloat(node.style.height) || 10) / 100;
+    input.style.fontSize = `${fitBoxFont(input.value || input.placeholder, wp * imgW, hp * imgH)}px`;
+  }
+}
+
 export function getCurrentPage() {
   return state.pages[state.currentPageIndex] || null;
 }
@@ -111,35 +157,33 @@ export function renderTranslationList() {
     return;
   }
 
+  // Caixinhas numeradas compactas. Clique abre o detalhe (Original | Tradução).
   for (const box of boxes) {
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = "line-item";
-    if (box.id === state.selectedBoxId) item.classList.add("selected");
+    const orig = (box.originalText || "").trim();
+    const trans = (box.translatedText || box.suggestedText || "").trim();
 
-    const conf = document.createElement("span");
-    conf.className = `conf-dot ${confClass(box.confidence)}`;
-    conf.title = typeof box.confidence === "number"
-      ? `Confianca da deteccao/OCR: ${box.confidence}%`
-      : "Sem confianca (caixa manual)";
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "fala-chip";
+    if (box.id === state.selectedBoxId) chip.classList.add("selected");
+    chip.classList.add(trans ? "done" : "pending");
+    chip.title = orig
+      ? (trans ? `${orig}\n→ ${trans}` : `${orig}\n(sem traducao ainda)`)
+      : "Caixa manual (sem texto detectado)";
 
-    const number = document.createElement("span");
-    number.className = "line-number";
-    number.textContent = String(box.order).padStart(2, "0");
+    const num = document.createElement("span");
+    num.className = "chip-num";
+    num.textContent = String(box.order).padStart(2, "0");
 
-    const content = document.createElement("span");
-    content.className = "line-content";
+    const dot = document.createElement("span");
+    dot.className = `conf-dot ${confClass(box.confidence)}`;
+    dot.title = typeof box.confidence === "number"
+      ? `Confianca: ${box.confidence}%`
+      : "Caixa manual";
 
-    const original = document.createElement("strong");
-    original.textContent = box.originalText || "Texto original vazio";
-
-    const translated = document.createElement("span");
-    translated.textContent = box.translatedText || box.suggestedText || "Sem traducao";
-
-    content.append(original, translated);
-    item.append(conf, number, content);
-    item.addEventListener("click", () => selectBox(box.id));
-    elements.translationList.appendChild(item);
+    chip.append(num, dot);
+    chip.addEventListener("click", () => selectBox(box.id));
+    elements.translationList.appendChild(chip);
   }
 }
 
@@ -206,6 +250,9 @@ export function syncBoxForm() {
 export function renderBoxes() {
   elements.boxLayer.innerHTML = "";
 
+  const imgW = elements.pageImage.clientWidth || elements.pageImage.naturalWidth || 1;
+  const imgH = elements.pageImage.clientHeight || elements.pageImage.naturalHeight || 1;
+
   for (const box of orderedBoxes()) {
     const node = document.createElement("div");
     node.className = "translation-box";
@@ -244,7 +291,7 @@ export function renderBoxes() {
     input.className = "box-input";
     input.value = box.translatedText || "";
     input.placeholder = box.suggestedText || box.originalText || "traduzir...";
-    input.style.fontSize = `${box.fontSize || 18}px`;
+    input.style.fontSize = `${fitBoxFont(input.value || input.placeholder, box.width * imgW, box.height * imgH)}px`;
     input.addEventListener("pointerdown", (event) => event.stopPropagation());
     input.addEventListener("focus", () => {
       if (state.selectedBoxId !== box.id) selectBox(box.id);
@@ -252,6 +299,9 @@ export function renderBoxes() {
     input.addEventListener("input", () => {
       box.translatedText = input.value;
       if (elements.translatedText) elements.translatedText.value = input.value;
+      const iw = elements.pageImage.clientWidth || 1;
+      const ih = elements.pageImage.clientHeight || 1;
+      input.style.fontSize = `${fitBoxFont(input.value || input.placeholder, box.width * iw, box.height * ih)}px`;
       renderTranslationList();
     });
 
@@ -321,6 +371,7 @@ export function applyZoom() {
     img.style.width = "auto";
     img.style.height = `${Math.round(h * z)}px`;
   }
+  refitBoxFonts();
   if (elements.zoomLabel) elements.zoomLabel.textContent = `${Math.round(z * 100)}%`;
 }
 
@@ -330,6 +381,8 @@ export function selectBox(id) {
   for (const node of elements.boxLayer.children) {
     node.classList.toggle("selected", node.dataset.id === id);
   }
+  // Abre o detalhe (Original | Tradução) ao clicar numa caixinha.
+  if (id && elements.reviewDetails) elements.reviewDetails.open = true;
   renderTranslationList();
   syncBoxForm();
 }
