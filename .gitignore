@@ -17,6 +17,17 @@ tradutor-manga/traduzidos/*/
 tradutor-manga/traduzidos/*.png
 *.cbz
 
+# Dados locais: trabalho de tradução (por capítulo) e memória de treino.
+# São pessoais e mudam a cada uso (auto-save) — não vão pro repositório.
+# O README de treino fica versionado como documentação.
+tradutor-manga/em-traducao/projetos/
+tradutor-manga/treino/exemplos.jsonl
+tradutor-manga/treino/glossario.json
+tradutor-manga/treino/estilo.txt
+
+# Backups de reset locais
+_backup-reset-*/
+
 # Segredos e temporários
 .env
 *.log
