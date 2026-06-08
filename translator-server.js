@@ -962,6 +962,27 @@ async function translateWithLibreTranslate(text) {
   };
 }
 
+async function translateWithGoogleFree(text) {
+  // Endpoint publico (nao-oficial) do Google Translate: sem chave, melhor esforco.
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=pt&dt=t&q=${encodeURIComponent(text)}`;
+  const response = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0" },
+    signal: AbortSignal.timeout(15000)
+  });
+
+  if (!response.ok) {
+    throw new Error(`Google falhou: HTTP ${response.status}`);
+  }
+
+  const data = await response.json();
+  const segments = Array.isArray(data?.[0]) ? data[0] : [];
+  const translated = segments.map((seg) => (Array.isArray(seg) ? seg[0] : "")).join("");
+  return {
+    provider: "google",
+    text: cleanOcrText(translated)
+  };
+}
+
 async function translateWithOpenAi(text) {
   if (!USE_OPENAI || !process.env.OPENAI_API_KEY) return null;
 
@@ -1073,7 +1094,8 @@ const TRANSLATION_BACKENDS = {
   ollama: (value, context) => translateWithOllama(value, context),
   openai: (value) => translateWithOpenAi(value),
   libre: (value) => translateWithLibreTranslate(value),
-  libretranslate: (value) => translateWithLibreTranslate(value)
+  libretranslate: (value) => translateWithLibreTranslate(value),
+  google: (value) => translateWithGoogleFree(value)
 };
 
 async function suggestTranslation(text, context = {}) {
@@ -1098,7 +1120,7 @@ async function suggestTranslation(text, context = {}) {
   }
 
   const chain = TRANSLATOR_PROVIDER === "auto"
-    ? ["ollama", "openai", "libre"]
+    ? ["ollama", "openai", "libre", "google"]
     : [TRANSLATOR_PROVIDER].filter((name) => TRANSLATION_BACKENDS[name]);
 
   const providerErrors = [];
@@ -1219,6 +1241,7 @@ async function preprocessChapter(job, { suggest, engine }) {
             });
             if (result?.text) {
               box.suggestedText = result.text;
+              box.translatedText = result.text; // ja deixa a pagina traduzida (humano refina)
               job.suggested++;
             }
           } catch {

@@ -163,13 +163,25 @@ def detect(image_path, engine=None):
             x1, y1, x2, y2 = float(x1), float(y1), float(x2), float(y2)
             crop = image.crop((int(x1), int(y1), int(x2), int(y2)))
             text = ocr_crop(engine, crop)
+            # Aperta a caixa retornada na AREA BRANCA do balao (encaixa melhor).
+            bx1, by1, bx2, by2 = x1, y1, x2, y2
+            try:
+                import numpy as np
+                import cv2
+                inner = bubble_inner_rect(cv2.cvtColor(np.array(crop), cv2.COLOR_RGB2BGR))
+                if inner:
+                    ix, iy, iw, ih = inner
+                    bx1, by1 = x1 + ix, y1 + iy
+                    bx2, by2 = x1 + ix + iw, y1 + iy + ih
+            except Exception:
+                pass
             lines.append({
                 "originalText": text,
                 "confidence": round(conf * 100),
-                "x": max(0.0, min(1.0, x1 / W)),
-                "y": max(0.0, min(1.0, y1 / H)),
-                "width": max(0.02, min(1.0, (x2 - x1) / W)),
-                "height": max(0.02, min(1.0, (y2 - y1) / H)),
+                "x": max(0.0, min(1.0, bx1 / W)),
+                "y": max(0.0, min(1.0, by1 / H)),
+                "width": max(0.02, min(1.0, (bx2 - bx1) / W)),
+                "height": max(0.02, min(1.0, (by2 - by1) / H)),
             })
 
     # Ordem de leitura: cima→baixo, esquerda→direita (igual ao server atual).
