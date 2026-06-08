@@ -504,6 +504,15 @@ function cleanOcrText(value) {
     .trim();
 }
 
+// Remove o "raciocinio" de modelos que pensam em voz alta (qwen3 etc.):
+// blocos <think>...</think> e prefacios soltos antes da resposta.
+function stripThink(value) {
+  return String(value || "")
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<\/?think>/gi, "")
+    .trim();
+}
+
 function parseTesseractTsv(tsv) {
   const rows = String(tsv || "").trim().split(/\r?\n/);
   const headers = rows.shift()?.split("\t") || [];
@@ -1019,19 +1028,28 @@ async function translateWithOpenAi(text) {
 }
 
 async function getOllamaModel() {
-  if (OLLAMA_MODEL) return OLLAMA_MODEL;
-
   try {
     const response = await fetch(`${OLLAMA_URL}/api/tags`, {
       signal: AbortSignal.timeout(1500)
     });
-    if (!response.ok) return "";
+    if (!response.ok) return OLLAMA_MODEL || "";
 
     const data = await response.json();
     const models = Array.isArray(data.models) ? data.models : [];
-    return models[0]?.name || "";
+    const names = models.map((m) => m?.name).filter(Boolean);
+    if (!names.length) return "";
+
+    // Se o modelo configurado existe (tag exata ou mesma familia), usa ele;
+    // senao cai pro primeiro instalado (evita falhar por modelo inexistente).
+    if (OLLAMA_MODEL) {
+      const base = OLLAMA_MODEL.split(":")[0];
+      const hit = names.find((n) => n === OLLAMA_MODEL)
+        || names.find((n) => n.split(":")[0] === base);
+      if (hit) return hit;
+    }
+    return names[0];
   } catch {
-    return "";
+    return OLLAMA_MODEL || "";
   }
 }
 
@@ -1090,6 +1108,7 @@ async function translateWithOllama(text, context = {}) {
       system: systemPrompt,
       prompt,
       stream: false,
+      think: false,
       options: {
         temperature: 0.2
       }
@@ -1103,8 +1122,109 @@ async function translateWithOllama(text, context = {}) {
   const data = await response.json();
   return {
     provider: `ollama:${model}`,
-    text: cleanOcrText(data.response || "")
+    text: cleanOcrText(stripThink(data.response || ""))
   };
+}
+
+// Traduz a PAGINA INTEIRA numa unica chamada (lista numerada). E o que torna o
+// Ollama viavel como padrao: 1 request por pagina em vez de 1 por balao.
+async function translateBatchWithOllama(texts, context = {}) {
+  const model = await getOllamaModel();
+  if (!model) return null;
+
+  const cleaned = texts.map((t) => cleanOcrText(t));
+  const idxs = cleaned.map((t, i) => (t ? i : -1)).filter((i) => i >= 0);
+  if (!idxs.length) return { provider: `ollama:${model}`, texts: cleaned.map(() => "") };
+
+  const style = await loadTrainingStyle();
+  const glossary = await glossaryForManga(context.manga);
+  const joined = idxs.map((i) => cleaned[i]).join("\n");
+  const examples = await findRelevantTrainingExamples(joined, context);
+  const nearby = Array.isArray(context.nearbyLines)
+    ? context.nearbyLines.filter(Boolean).join("\n")
+    : "";
+  const glossaryText = glossary
+    .filter((item) => item?.source && item?.target)
+    .map((item) => `${item.source} => ${item.target}${item.note ? ` (${item.note})` : ""}`)
+    .join("\n");
+  const examplesText = examples
+    .map((example) => `EN: ${example.originalText}\nPT-BR: ${example.translatedText}`)
+    .join("\n\n");
+
+  const systemPrompt = [
+    "Você é um tradutor profissional de mangás.",
+    "Traduza para português brasileiro natural.",
+    "",
+    "Regras:",
+    "- Preserve nomes próprios, termos do glossário, ataques e técnicas.",
+    "- Português brasileiro natural; adapte expressões; mantenha o tom, humor, ironia.",
+    "- Não explique nada nem adicione comentários.",
+    "- Cada tradução deve caber em um balão; prefira frases curtas.",
+    "",
+    "Você vai receber VÁRIAS falas numeradas. Traduza CADA uma.",
+    "Responda APENAS com a lista numerada, UMA tradução por linha, no MESMO número e ordem.",
+    "Formato exato da resposta:",
+    "1. <tradução da fala 1>",
+    "2. <tradução da fala 2>",
+    "Não junte falas, não pule números, não escreva mais nada."
+  ].join("\n");
+
+  const numbered = idxs.map((i, k) => `${k + 1}. ${cleaned[i]}`).join("\n");
+  const prompt = [
+    style ? `Estilo da scan:\n${style}` : "",
+    glossaryText ? `Glossário (use sempre):\n${glossaryText}` : "",
+    examplesText ? `Exemplos já aprovados (siga o estilo):\n${examplesText}` : "",
+    nearby ? `Falas próximas (contexto da cena):\n${nearby}` : "",
+    `Falas para traduzir:\n${numbered}`,
+    "Traduções numeradas:"
+  ].filter(Boolean).join("\n\n");
+
+  const response = await fetch(`${OLLAMA_URL}/api/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(120000), // pagina inteira -> timeout maior
+    body: JSON.stringify({
+      model,
+      system: systemPrompt,
+      prompt,
+      stream: false,
+      think: false,
+      options: { temperature: 0.2 }
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Ollama falhou: HTTP ${response.status}`);
+  }
+
+  const data = await response.json();
+  const parsed = parseNumberedList(stripThink(data.response || ""), idxs.length);
+  const out = cleaned.map(() => "");
+  idxs.forEach((origIdx, k) => {
+    if (parsed[k]) out[origIdx] = cleanOcrText(parsed[k]);
+  });
+  return { provider: `ollama:${model}`, texts: out };
+}
+
+// Faz o parsing de uma resposta em lista numerada ("1. ...\n2. ...") tolerando
+// numeracao com . ) - : e linhas de continuacao (fala que quebrou em 2 linhas).
+function parseNumberedList(raw, expected) {
+  const result = new Array(expected).fill("");
+  const re = /^\s*(\d+)\s*[.)\-:]\s*(.*)$/;
+  let last = 0;
+  for (const line of String(raw || "").split(/\r?\n/)) {
+    const m = line.match(re);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (n >= 1 && n <= expected) {
+        result[n - 1] = m[2].trim();
+        last = n;
+      }
+    } else if (last >= 1 && last <= expected && line.trim()) {
+      result[last - 1] += (result[last - 1] ? " " : "") + line.trim();
+    }
+  }
+  return result;
 }
 
 // Registry de provedores de traducao (etapas plugaveis, trocaveis por config).
@@ -1161,6 +1281,61 @@ async function suggestTranslation(text, context = {}) {
       ? `Provedor automatico indisponivel: ${providerErrors.join(" | ")}`
       : "Sugestao basica local. Para contexto melhor, rode uma IA local via Ollama ou salve correcoes para alimentar a memoria."
   };
+}
+
+// Sugere a traducao de VARIOS itens (uma pagina). Memoria humana primeiro;
+// depois, se o provedor for Ollama, traduz tudo numa unica chamada (rapido);
+// o que sobrar cai no caminho item-a-item (google/fallback).
+async function suggestTranslationsBatch(items, context = {}) {
+  const out = items.map((item) => ({
+    id: String(item.id || ""),
+    originalText: String(item.originalText || ""),
+    result: null
+  }));
+
+  // 1) memoria vetada por humano (local, rapida)
+  for (const o of out) {
+    const value = cleanOcrText(o.originalText);
+    if (!value) {
+      o.result = { provider: "empty", text: "", automatic: false };
+      continue;
+    }
+    const memory = await findTranslationMemory(value);
+    if (memory) {
+      o.result = {
+        provider: "memoria",
+        text: memory,
+        automatic: false,
+        note: "Sugestao baseada em uma correcao salva anteriormente."
+      };
+    }
+  }
+
+  // 2) Ollama em lote (uma chamada para a pagina toda)
+  const chain = TRANSLATOR_PROVIDER === "auto"
+    ? ["ollama", "openai", "libre", "google"]
+    : [TRANSLATOR_PROVIDER].filter((name) => TRANSLATION_BACKENDS[name]);
+  const pending = out.filter((o) => !o.result && cleanOcrText(o.originalText));
+  if (pending.length && chain[0] === "ollama") {
+    try {
+      const batch = await translateBatchWithOllama(pending.map((o) => o.originalText), context);
+      if (batch && Array.isArray(batch.texts)) {
+        pending.forEach((o, i) => {
+          const text = batch.texts[i];
+          if (text) o.result = { provider: batch.provider, text, automatic: true };
+        });
+      }
+    } catch (error) {
+      // ignora: o que faltar cai no item-a-item abaixo
+    }
+  }
+
+  // 3) o que ainda nao tem sugestao: caminho normal item-a-item
+  for (const o of out) {
+    if (!o.result) o.result = await suggestTranslation(o.originalText, context);
+  }
+
+  return out.map((o) => ({ id: o.id, originalText: o.originalText, ...o.result }));
 }
 
 // === Fila de pre-processamento por capitulo =========================
@@ -1249,23 +1424,27 @@ async function preprocessChapter(job, { suggest, engine }) {
 
       if (suggest) {
         const nearby = boxes.map((box) => box.originalText).filter(Boolean);
-        for (const box of boxes) {
-          if (!box.originalText) continue;
-          try {
-            const result = await suggestTranslation(box.originalText, {
-              manga: job.manga,
-              chapter: job.chapter,
-              page: page.name,
-              nearbyLines: nearby
-            });
-            if (result?.text) {
-              box.suggestedText = result.text;
-              box.translatedText = result.text; // ja deixa a pagina traduzida (humano refina)
+        const items = boxes
+          .filter((box) => box.originalText)
+          .map((box) => ({ id: box.id, originalText: box.originalText }));
+        try {
+          const suggestions = await suggestTranslationsBatch(items, {
+            manga: job.manga,
+            chapter: job.chapter,
+            page: page.name,
+            nearbyLines: nearby
+          });
+          const byId = new Map(suggestions.map((s) => [s.id, s]));
+          for (const box of boxes) {
+            const s = byId.get(box.id);
+            if (s?.text) {
+              box.suggestedText = s.text;
+              box.translatedText = s.text; // ja deixa a pagina traduzida (humano refina)
               job.suggested++;
             }
-          } catch {
-            // sugestao e best-effort
           }
+        } catch {
+          // sugestao e best-effort
         }
       }
 
@@ -1517,17 +1696,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readJsonBody(req);
       const items = Array.isArray(body.items) ? body.items : [];
       const context = body.context && typeof body.context === "object" ? body.context : {};
-      const suggestions = [];
-
-      for (const item of items) {
-        const id = String(item.id || "");
-        const originalText = String(item.originalText || "");
-        suggestions.push({
-          id,
-          originalText,
-          ...await suggestTranslation(originalText, context)
-        });
-      }
+      const suggestions = await suggestTranslationsBatch(items, context);
 
       sendJson(res, 200, { suggestions });
       return;

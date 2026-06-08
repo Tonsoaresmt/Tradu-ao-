@@ -7,14 +7,21 @@ import { state, elements, clamp, makeId } from "./state.js";
 const _measureCanvas = document.createElement("canvas");
 const _measureCtx = _measureCanvas.getContext("2d");
 
+// Auto-ajuste: maior fonte que faz o texto caber DENTRO do balão. Desconta o
+// padding+borda reais (~7px lado a lado) e usa a mesma entrelinha do CSS (1.15),
+// senão a conta superestima o espaço em balões pequenos e o texto corta.
+const _BOX_PAD = 7;   // padding(3) + borda(2) por lado, com folga
+const _LINE_H = 1.15;
+
 export function fitBoxFont(text, wPx, hPx) {
   const t = String(text || "").trim();
-  if (wPx < 8 || hPx < 8) return 12;
-  if (!t) return Math.max(10, Math.min(18, Math.floor(hPx * 0.4)));
-  const availW = wPx * 0.86;
-  const availH = hPx * 0.86;
-  let size = Math.max(9, Math.min(Math.floor(hPx * 0.7), 40));
-  for (; size >= 9; size--) {
+  if (wPx < 8 || hPx < 8) return 11;
+  const availW = Math.max(8, wPx - _BOX_PAD * 2);
+  const availH = Math.max(8, hPx - _BOX_PAD * 2);
+  if (!t) return Math.max(9, Math.min(15, Math.floor(availH * 0.5)));
+
+  let size = Math.max(8, Math.min(Math.floor(availH), 38));
+  for (; size >= 8; size--) {
     _measureCtx.font = `700 ${size}px sans-serif`;
     const words = t.split(/\s+/);
     let lines = 1;
@@ -31,20 +38,19 @@ export function fitBoxFont(text, wPx, hPx) {
       }
     }
     if (!ok) continue;
-    if (lines * size * 1.18 <= availH) return size;
+    if (lines * size * _LINE_H <= availH) return size;
   }
-  return 9;
+  return 8;
 }
 
+// Recalcula a fonte de cada balão pelo tamanho REAL renderizado do nó
+// (clientWidth/Height) — funciona em qualquer zoom, sem depender de recalcular
+// a partir da imagem (que sob zoom pode divergir do balão).
 function refitBoxFonts() {
-  const imgW = elements.pageImage.clientWidth || 1;
-  const imgH = elements.pageImage.clientHeight || 1;
   for (const node of elements.boxLayer.children) {
     const input = node.querySelector(".box-input");
     if (!input) continue;
-    const wp = (parseFloat(node.style.width) || 20) / 100;
-    const hp = (parseFloat(node.style.height) || 10) / 100;
-    input.style.fontSize = `${fitBoxFont(input.value || input.placeholder, wp * imgW, hp * imgH)}px`;
+    input.style.fontSize = `${fitBoxFont(input.value || input.placeholder, node.clientWidth, node.clientHeight)}px`;
   }
 }
 
@@ -299,15 +305,16 @@ export function renderBoxes() {
     input.addEventListener("input", () => {
       box.translatedText = input.value;
       if (elements.translatedText) elements.translatedText.value = input.value;
-      const iw = elements.pageImage.clientWidth || 1;
-      const ih = elements.pageImage.clientHeight || 1;
-      input.style.fontSize = `${fitBoxFont(input.value || input.placeholder, box.width * iw, box.height * ih)}px`;
+      input.style.fontSize = `${fitBoxFont(input.value || input.placeholder, node.clientWidth, node.clientHeight)}px`;
       renderTranslationList();
     });
 
     node.append(handle, input);
     elements.boxLayer.appendChild(node);
   }
+
+  // Agora que os balões estão no DOM, ajusta a fonte pelo tamanho real de cada um.
+  refitBoxFonts();
 }
 
 export function renderCurrentPage() {

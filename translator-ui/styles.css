@@ -364,15 +364,16 @@ textarea {
 .box-input {
   width: 100%;
   height: 100%;
+  box-sizing: border-box;
   border: none;
   outline: none;
   background: transparent;
   resize: none;
   text-align: center;
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 1.15;
   color: #111;
-  padding: 6px;
+  padding: 3px;
   overflow: hidden;
   font-family: inherit;
 }
@@ -753,8 +754,8 @@ body:not(.advanced) .toolbar { display: none; }
   min-height: 340px;
   max-height: none;
   padding: 8px;
-  overflow: hidden;          /* página inteira encaixa na altura, sem scroll interno */
-  align-items: center;
+  overflow: auto;            /* página inteira no fit; rola quando dá zoom */
+  align-items: flex-start;   /* topo: permite rolar até o topo da imagem ampliada */
   background: #0a0d11;
   border: 1px solid var(--panel-border);
 }
@@ -767,7 +768,7 @@ body:not(.advanced) .toolbar { display: none; }
   width: auto;
   height: auto;
 }
-.page-canvas { max-height: 100%; }
+.page-canvas { max-height: none; }   /* envolve a imagem inteira (overlay segue o zoom) */
 
 /* imagem original espelha o comportamento de exibição da traduzida */
 #page-image-original {

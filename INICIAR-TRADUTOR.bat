@@ -12,13 +12,18 @@ echo   - Seu trabalho salva sozinho a cada ~10s e ao fechar a aba.
 echo ============================================================
 echo.
 
-REM ===== Velocidade x qualidade da traducao automatica =====
-REM   google = RAPIDO (recomendado: abre e ja traduz em segundos)
-REM   ollama = mais qualidade, porem LENTO balao a balao (precisa do Ollama rodando)
-set "TRANSLATOR_PROVIDER=google"
-REM Para usar a IA local (qualidade), comente a linha acima e descomente as 2 abaixo:
-REM set "TRANSLATOR_PROVIDER=ollama"
-REM set "OLLAMA_TRANSLATOR_MODEL=qwen3:8b"
+REM ===== Qualidade x velocidade da traducao automatica =====
+REM   auto  = usa o Ollama (IA local, melhor qualidade) e, se ele nao estiver
+REM           rodando, cai sozinho no Google. Traduz a PAGINA INTEIRA numa
+REM           unica chamada (rapido). << RECOMENDADO
+REM   google = sempre Google: mais rapido, porem mais literal/robotico.
+REM   ollama = forca so a IA local (sem fallback).
+set "TRANSLATOR_PROVIDER=auto"
+REM O modelo do Ollama e detectado sozinho (usa o que voce tiver instalado).
+REM Para fixar um modelo especifico, descomente e ajuste:
+REM set "OLLAMA_TRANSLATOR_MODEL=qwen3.5:4b"
+REM Para priorizar VELOCIDADE em vez de qualidade, troque a 1a linha por:
+REM set "TRANSLATOR_PROVIDER=google"
 
 REM Abre o navegador depois de 3s, em segundo plano, sem travar o servidor.
 start "" /min powershell -NoProfile -Command "Start-Sleep -Seconds 3; Start-Process 'http://127.0.0.1:3210'"
