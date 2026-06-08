@@ -44,9 +44,9 @@ YOLO_CONF = float(os.environ.get("YOLO_CONF", "0.15"))
 _state = {
     "yolo": None,
     "yolo_error": None,
-    "ocr": None,
-    "ocr_error": None,
-    "ocr_engine": OCR_ENGINE,
+    "ocr_engines": {},   # nome -> objeto carregado ('tesseract' sentinel p/ tesseract)
+    "ocr_errors": {},    # nome -> mensagem de erro
+    "default_engine": OCR_ENGINE,
 }
 
 
@@ -78,45 +78,55 @@ def load_yolo():
     return _state["yolo"]
 
 
-def load_ocr():
-    if _state["ocr"] is not None or _state["ocr_error"] is not None:
-        return _state["ocr"]
-    engine = _state["ocr_engine"]
+def _configure_tesseract(pytesseract):
+    """Aponta o pytesseract pro binario, mesmo fora do PATH (install padrao Windows)."""
+    tess_cmd = os.environ.get("TESSERACT_CMD", "")
+    if not tess_cmd:
+        for cand in (
+            r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+            r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        ):
+            if os.path.exists(cand):
+                tess_cmd = cand
+                break
+    if tess_cmd:
+        pytesseract.pytesseract.tesseract_cmd = tess_cmd
+
+
+def get_ocr(engine):
+    """Carrega/cacheia o engine OCR pedido (tesseract|manga-ocr); trocavel por requisicao."""
+    engine = (engine or "").lower()
+    if engine in ("", "none"):
+        return None
+    if engine in _state["ocr_engines"]:
+        return _state["ocr_engines"][engine]
+    if engine in _state["ocr_errors"]:
+        return None
     try:
         if engine == "manga-ocr":
             from manga_ocr import MangaOcr
-            log("carregando manga-ocr (japonês)...")
-            _state["ocr"] = MangaOcr()
+            log("carregando manga-ocr (japones, baixa o modelo na 1a vez)...")
+            obj = MangaOcr()
+            _state["ocr_engines"][engine] = obj
             log("manga-ocr pronto.")
-        elif engine == "tesseract":
-            import pytesseract  # noqa: F401
-            # Acha o binário mesmo fora do PATH (ex.: install padrão do Windows).
-            tess_cmd = os.environ.get("TESSERACT_CMD", "")
-            if not tess_cmd:
-                for cand in (
-                    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-                    r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
-                ):
-                    if os.path.exists(cand):
-                        tess_cmd = cand
-                        break
-            if tess_cmd:
-                pytesseract.pytesseract.tesseract_cmd = tess_cmd
-            pytesseract.get_tesseract_version()  # valida que o binário responde
-            _state["ocr"] = "tesseract"
-            log(f"tesseract pronto (lang={OCR_LANG}, bin={pytesseract.pytesseract.tesseract_cmd}).")
-        else:
-            _state["ocr"] = None  # detecção sem OCR (só posiciona caixas)
+            return obj
+        if engine == "tesseract":
+            import pytesseract
+            _configure_tesseract(pytesseract)
+            pytesseract.get_tesseract_version()  # valida o binario
+            _state["ocr_engines"][engine] = "tesseract"
+            log(f"tesseract pronto (bin={pytesseract.pytesseract.tesseract_cmd}).")
+            return "tesseract"
+        _state["ocr_errors"][engine] = f"engine OCR desconhecido: {engine}"
     except Exception as e:
-        _state["ocr_error"] = str(e)
-        log(f"OCR '{engine}' indisponível: {e} (segue só com detecção)")
-    return _state["ocr"]
+        _state["ocr_errors"][engine] = str(e)
+        log(f"OCR '{engine}' indisponivel: {e}")
+    return None
 
 
-def ocr_crop(pil_image):
-    """Roda OCR num recorte de balão. Retorna texto limpo (ou '')."""
-    engine = _state["ocr_engine"]
-    ocr = _state["ocr"]
+def ocr_crop(engine, pil_image):
+    """Roda OCR num recorte de balão com o engine pedido. Retorna texto limpo (ou '')."""
+    ocr = get_ocr(engine)
     if ocr is None:
         return ""
     try:
@@ -131,13 +141,14 @@ def ocr_crop(pil_image):
     return ""
 
 
-def detect(image_path):
+def detect(image_path, engine=None):
     from PIL import Image
 
     yolo = load_yolo()
     if yolo is None:
         raise RuntimeError(_state["yolo_error"] or "YOLO não carregou")
-    load_ocr()
+    engine = (engine or _state["default_engine"])
+    get_ocr(engine)
 
     image = Image.open(image_path).convert("RGB")
     W, H = image.size
@@ -151,7 +162,7 @@ def detect(image_path):
         for (x1, y1, x2, y2), conf in zip(xyxy, confs):
             x1, y1, x2, y2 = float(x1), float(y1), float(x2), float(y2)
             crop = image.crop((int(x1), int(y1), int(x2), int(y2)))
-            text = ocr_crop(crop)
+            text = ocr_crop(engine, crop)
             lines.append({
                 "originalText": text,
                 "confidence": round(conf * 100),
@@ -372,13 +383,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.startswith("/health"):
+            default = _state["default_engine"]
             self._send(200, {
                 "ok": True,
                 "yolo": _state["yolo"] is not None,
                 "yoloError": _state["yolo_error"],
-                "ocrEngine": _state["ocr_engine"],
-                "ocrReady": _state["ocr"] is not None,
-                "ocrError": _state["ocr_error"],
+                "ocrEngine": default,
+                "ocrReady": default in _state["ocr_engines"],
+                "ocrLoaded": list(_state["ocr_engines"].keys()),
+                "ocrError": _state["ocr_errors"].get(default),
+                "ocrErrors": _state["ocr_errors"],
             })
             return
         self._send(404, {"error": "rota não encontrada"})
@@ -402,15 +416,15 @@ class Handler(BaseHTTPRequestHandler):
         try:
             body = self._read_body()
             image_path = body.get("imagePath", "")
-            if "ocr" in body and body["ocr"]:
-                _state["ocr_engine"] = str(body["ocr"]).lower()
+            engine = str(body.get("ocr") or _state["default_engine"]).lower()
             if not image_path or not os.path.exists(image_path):
                 self._send(400, {"error": f"imagem não encontrada: {image_path}"})
                 return
-            lines = detect(image_path)
+            lines = detect(image_path, engine)
+            used = get_ocr(engine) is not None
             self._send(200, {
                 "ok": True,
-                "provider": f"yolo+{_state['ocr_engine'] if _state['ocr'] else 'no-ocr'}",
+                "provider": f"yolo+{engine if used else 'no-ocr'}",
                 "lines": lines,
             })
         except Exception as e:
@@ -472,9 +486,9 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     # Pré-carrega na subida pra falhar cedo e deixar pronto pro primeiro request.
     load_yolo()
-    load_ocr()
+    get_ocr(_state["default_engine"])
     server = ThreadingHTTPServer((HOST, PORT), Handler)
-    log(f"detector ouvindo em http://{HOST}:{PORT}  (yolo={_state['yolo'] is not None}, ocr={_state['ocr_engine'] if _state['ocr'] else 'none'})")
+    log(f"detector ouvindo em http://{HOST}:{PORT}  (yolo={_state['yolo'] is not None}, ocr_default={_state['default_engine']})")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -30,6 +30,7 @@ const elements = {
   exportChapter: document.querySelector("#export-chapter"),
   preprocessChapter: document.querySelector("#preprocess-chapter"),
   previewPage: document.querySelector("#preview-page"),
+  ocrEngine: document.querySelector("#ocr-engine"),
   prevPage: document.querySelector("#prev-page"),
   nextPage: document.querySelector("#next-page"),
   addLine: document.querySelector("#add-line"),
@@ -37,6 +38,7 @@ const elements = {
   suggestPage: document.querySelector("#suggest-page"),
   applySuggestions: document.querySelector("#apply-suggestions"),
   copyOriginals: document.querySelector("#copy-originals"),
+  acceptConfident: document.querySelector("#accept-confident"),
   toolStatus: document.querySelector("#tool-status"),
   translationList: document.querySelector("#translation-list"),
   lineCounter: document.querySelector("#line-counter"),
@@ -235,6 +237,13 @@ function renderPageList() {
   }
 }
 
+function confClass(confidence) {
+  if (typeof confidence !== "number") return "conf-none";
+  if (confidence >= 90) return "conf-high";
+  if (confidence >= 60) return "conf-mid";
+  return "conf-low";
+}
+
 function renderTranslationList() {
   const boxes = orderedBoxes();
   elements.translationList.innerHTML = "";
@@ -254,6 +263,12 @@ function renderTranslationList() {
     item.className = "line-item";
     if (box.id === state.selectedBoxId) item.classList.add("selected");
 
+    const conf = document.createElement("span");
+    conf.className = `conf-dot ${confClass(box.confidence)}`;
+    conf.title = typeof box.confidence === "number"
+      ? `Confianca da deteccao/OCR: ${box.confidence}%`
+      : "Sem confianca (caixa manual)";
+
     const number = document.createElement("span");
     number.className = "line-number";
     number.textContent = String(box.order).padStart(2, "0");
@@ -268,7 +283,7 @@ function renderTranslationList() {
     translated.textContent = box.translatedText || box.suggestedText || "Sem traducao";
 
     content.append(original, translated);
-    item.append(number, content);
+    item.append(conf, number, content);
     item.addEventListener("click", () => selectBox(box.id));
     elements.translationList.appendChild(item);
   }
@@ -554,7 +569,7 @@ async function preprocessChapter() {
   setToolStatus("Iniciando pre-processamento do capitulo...");
   const start = await api("/api/preprocess-chapter", {
     method: "POST",
-    body: JSON.stringify({ manga: state.selectedManga, chapter: state.selectedChapter })
+    body: JSON.stringify({ manga: state.selectedManga, chapter: state.selectedChapter, ocr: elements.ocrEngine?.value })
   });
 
   const jobId = start.jobId;
@@ -629,7 +644,8 @@ async function runOcr() {
     body: JSON.stringify({
       manga: state.selectedManga,
       chapter: state.selectedChapter,
-      page: page.name
+      page: page.name,
+      ocr: elements.ocrEngine?.value
     })
   });
 
@@ -714,6 +730,21 @@ function applySuggestions() {
   setToolStatus(`${applied} sugestao(oes) aplicada(s).`);
 }
 
+function acceptConfident(threshold = 90) {
+  let applied = 0;
+  for (const page of Object.values(state.project.pages || {})) {
+    for (const box of page.boxes || []) {
+      if (!box.translatedText && box.suggestedText
+        && typeof box.confidence === "number" && box.confidence >= threshold) {
+        box.translatedText = box.suggestedText;
+        applied++;
+      }
+    }
+  }
+  renderCurrentPage();
+  setToolStatus(`${applied} sugestao(oes) com confianca >= ${threshold}% aceitas no capitulo. Salve para confirmar.`);
+}
+
 function handlePointerMove(event) {
   if (state.draw) {
     const imageRect = elements.pageImage.getBoundingClientRect();
@@ -791,6 +822,7 @@ function wireEvents() {
   elements.runOcr.addEventListener("click", () => runOcr().catch((error) => setToolStatus(error.message)));
   elements.suggestPage.addEventListener("click", () => suggestPage().catch((error) => setToolStatus(error.message)));
   elements.applySuggestions.addEventListener("click", applySuggestions);
+  elements.acceptConfident.addEventListener("click", () => acceptConfident(90));
   elements.copyOriginals.addEventListener("click", () => copyOriginals().catch((error) => setToolStatus(error.message)));
   elements.removeBox.addEventListener("click", () => {
     const pageRecord = getCurrentPageRecord();

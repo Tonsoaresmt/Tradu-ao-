@@ -73,12 +73,15 @@ python -m venv .venv
 Na primeira detecção, o modelo de balões (`kitsumed/yolov8m_seg-speech-bubble`) é baixado
 automaticamente do HuggingFace (~50 MB). Depois é rápido.
 
-**OCR do texto dentro do balão** (opcional — o posicionamento já funciona sem):
-- Inglês→PT-BR: instale o [Tesseract](https://github.com/UB-Mannheim/tesseract/wiki) e
-  mantenha `DETECTOR_OCR=tesseract` (`OCR_LANG=eng`).
-- Raws japonesas: descomente `manga-ocr` no `requirements.txt`, reinstale e use
-  `DETECTOR_OCR=manga-ocr`.
-- Sem nenhum: as caixas vêm posicionadas e vazias; você preenche o texto na revisão.
+**OCR do texto dentro do balão** — selecionável **na interface** (dropdown na barra de
+falas), por requisição, sem reiniciar nada:
+- **EN · Tesseract**: inglês → PT-BR (precisa do [Tesseract](https://github.com/UB-Mannheim/tesseract/wiki) instalado).
+- **JP · MangaOCR**: raws japonesas (`kha-white/manga-ocr-base`, referência p/ mangá; baixa
+  o modelo ~400 MB na 1ª vez, depois fica em cache; ambos os engines convivem em memória).
+- **Só posicionar**: caixas vêm posicionadas e vazias; você preenche o texto na revisão.
+
+O servidor envia o engine escolhido ao detector (`/detect {ocr}`); `DETECTOR_OCR` define só
+o padrão. Cada engine é carregado sob demanda e cacheado.
 
 **GPU NVIDIA** (mais rápido): troque o torch CPU por
 `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121`.

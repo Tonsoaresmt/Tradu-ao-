@@ -184,12 +184,12 @@ async function ensureDetector() {
   return detectorStarting;
 }
 
-async function detectBubbles(imagePath) {
+async function detectBubbles(imagePath, engine) {
   const response = await fetch(`${DETECTOR_URL}/detect`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ imagePath, ocr: DETECTOR_OCR }),
-    signal: AbortSignal.timeout(120000)
+    body: JSON.stringify({ imagePath, ocr: engine || DETECTOR_OCR }),
+    signal: AbortSignal.timeout(180000)
   });
 
   if (!response.ok) {
@@ -1157,7 +1157,7 @@ function createJob(type, meta) {
   return job;
 }
 
-async function preprocessChapter(job, { suggest }) {
+async function preprocessChapter(job, { suggest, engine }) {
   try {
     const payload = await getChapterPayload(job.manga, job.chapter);
     const { chapterDir } = await ensureChapterReady(job.manga, job.chapter);
@@ -1185,7 +1185,7 @@ async function preprocessChapter(job, { suggest }) {
       const imagePath = path.join(chapterDir, page.name);
       let lines = [];
       try {
-        const result = await detectBubbles(imagePath);
+        const result = await detectBubbles(imagePath, engine);
         lines = Array.isArray(result.lines) ? result.lines : [];
       } catch {
         // pagina sem deteccao segue em branco
@@ -1375,6 +1375,7 @@ const server = http.createServer(async (req, res) => {
       const manga = String(body.manga || "").trim();
       const chapter = String(body.chapter || "").trim();
       const fileName = String(body.page || "").trim();
+      const ocrEngine = String(body.ocr || "").trim() || undefined;
 
       const imagePath = await getPageImagePath(manga, chapter, fileName);
 
@@ -1382,17 +1383,18 @@ const server = http.createServer(async (req, res) => {
       try {
         const health = await ensureDetector();
         if (health && health.yolo) {
-          const result = await detectBubbles(imagePath);
+          const result = await detectBubbles(imagePath, ocrEngine);
           const lines = Array.isArray(result.lines) ? result.lines : [];
+          const noOcr = !result.provider || result.provider.includes("no-ocr");
           sendJson(res, 200, {
             ok: true,
             available: true,
             provider: result.provider || "yolo",
             positioned: true,
             lines,
-            message: health.ocrReady
-              ? `${lines.length} balao(oes) detectado(s) e lido(s) por ${result.provider || "yolo"}.`
-              : `${lines.length} balao(oes) posicionado(s). OCR de texto indisponivel (${health.ocrError ? health.ocrEngine + ": " + health.ocrError : "instale Tesseract ou use manga-ocr"}); preencha o texto na revisao.`
+            message: noOcr
+              ? `${lines.length} balao(oes) posicionado(s). OCR de texto indisponivel; preencha o texto na revisao.`
+              : `${lines.length} balao(oes) detectado(s) e lido(s) por ${result.provider}.`
           });
           return;
         }
@@ -1580,14 +1582,15 @@ const server = http.createServer(async (req, res) => {
       const manga = String(body.manga || "").trim();
       const chapter = String(body.chapter || "").trim();
       const suggest = body.suggest !== false;
+      const engine = String(body.ocr || "").trim() || undefined;
 
       if (!manga || !chapter) {
         sendError(res, 400, "Manga e capitulo sao obrigatorios");
         return;
       }
 
-      const job = createJob("preprocess", { manga, chapter, suggest });
-      preprocessChapter(job, { suggest }); // roda em background, nao aguarda
+      const job = createJob("preprocess", { manga, chapter, suggest, engine });
+      preprocessChapter(job, { suggest, engine }); // roda em background, nao aguarda
       sendJson(res, 200, { ok: true, jobId: job.id });
       return;
     }

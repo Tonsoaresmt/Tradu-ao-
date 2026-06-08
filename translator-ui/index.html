@@ -71,10 +71,16 @@
               </div>
 
               <div class="tool-row">
+                <select id="ocr-engine" class="ghost-select" title="Idioma do OCR ao detectar">
+                  <option value="tesseract">EN · Tesseract</option>
+                  <option value="manga-ocr">JP · MangaOCR</option>
+                  <option value="none">Só posicionar</option>
+                </select>
                 <button id="add-line" class="ghost-button" type="button">Adicionar</button>
                 <button id="run-ocr" class="ghost-button" type="button">Detectar</button>
                 <button id="suggest-page" class="ghost-button" type="button">Sugerir</button>
                 <button id="apply-suggestions" class="ghost-button" type="button">Aplicar</button>
+                <button id="accept-confident" class="ghost-button" type="button" title="Aceitar sugestões com confiança ≥90% no capítulo inteiro">Aceitar ≥90%</button>
                 <button id="copy-originals" class="ghost-button" type="button">Copiar</button>
               </div>
 
