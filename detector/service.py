@@ -553,7 +553,21 @@ def render_image(image_path, boxes, font_path):
         crop = img[ry1:ry2, rx1:rx2]
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
         _, mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        mask = cv2.dilate(mask, np.ones((3, 3), np.uint8), iterations=2)
+        # PRESERVA a arte que INVADE o balao (rosto/cabelo do personagem, etc.):
+        # so limpa componentes escuros pequenos e INTERNOS (texto). Descarta os
+        # que encostam na borda da area (vem de fora) ou sao grandes (silhueta) —
+        # tradução não pode apagar recurso do original.
+        mh, mw = mask.shape
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
+        text_mask = np.zeros_like(mask)
+        for i in range(1, n):
+            cx, cy, cw, ch, area = stats[i]
+            touches = (cx <= 0 or cy <= 0 or cx + cw >= mw or cy + ch >= mh)
+            too_big = (cw > mw * 0.55 or ch > mh * 0.55 or area > 0.22 * mw * mh)
+            if touches or too_big:
+                continue
+            text_mask[labels == i] = 255
+        mask = cv2.dilate(text_mask, np.ones((3, 3), np.uint8), iterations=2)
         full_mask[ry1:ry2, rx1:rx2] = mask
         has_mask = True
     if has_mask:
