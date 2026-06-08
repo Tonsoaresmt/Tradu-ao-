@@ -523,7 +523,9 @@ def render_image(image_path, boxes, font_path):
         y2 = int(min(H, y1 + max(0.01, box.get("height", 0.1)) * H))
         return x1, y1, x2, y2
 
-    # 1) inpaint do texto original (apenas boxes cobertos e com traducao)
+    # 1) inpaint do texto original. CRUCIAL: limpa SO a area branca INTERNA do
+    # balao, RECUADA pra dentro, pra NUNCA apagar o contorno preto do balao (o
+    # anel que delimita a fala e a diferencia do cenario/narracao).
     full_mask = np.zeros(img.shape[:2], dtype=np.uint8)
     has_mask = False
     for box in boxes:
@@ -536,11 +538,23 @@ def render_image(image_path, boxes, font_path):
         x1, y1, x2, y2 = px(box)
         if x2 <= x1 or y2 <= y1:
             continue
-        crop = img[y1:y2, x1:x2]
+        # area branca interna do balao dentro da caixa, com recuo de seguranca
+        inner = bubble_inner_rect(img[y1:y2, x1:x2])
+        if inner:
+            ix, iy, iw, ih = inner
+            pad = max(2, int(min(iw, ih) * 0.06))   # nao encostar no anel preto
+            rx1, ry1 = x1 + ix + pad, y1 + iy + pad
+            rx2, ry2 = x1 + ix + iw - pad, y1 + iy + ih - pad
+        else:
+            pad_x, pad_y = int((x2 - x1) * 0.10), int((y2 - y1) * 0.10)
+            rx1, ry1, rx2, ry2 = x1 + pad_x, y1 + pad_y, x2 - pad_x, y2 - pad_y
+        if rx2 - rx1 < 4 or ry2 - ry1 < 4:
+            continue
+        crop = img[ry1:ry2, rx1:rx2]
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
         _, mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
         mask = cv2.dilate(mask, np.ones((3, 3), np.uint8), iterations=2)
-        full_mask[y1:y2, x1:x2] = mask
+        full_mask[ry1:ry2, rx1:rx2] = mask
         has_mask = True
     if has_mask:
         img = cv2.inpaint(img, full_mask, 5, cv2.INPAINT_NS)
