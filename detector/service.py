@@ -500,29 +500,33 @@ def render_image(image_path, boxes, font_path):
             # SFX nao e balao: usa a caixa toda (a arte foi preservada).
             bx1, by1, bw, bh = x1, y1, (x2 - x1), (y2 - y1)
         else:
-            # Encaixa na AREA BRANCA real do balao; sem area branca clara -> recua 5%.
+            # Area base: area branca real do balao (ou a caixa toda como fallback).
             inner = bubble_inner_rect(img[y1:y2, x1:x2]) if box.get("coverOriginal") is not False else None
             if inner:
                 ix, iy, iw, ih = inner
-                bx1, by1 = x1 + ix, y1 + iy
-                bw, bh = iw, ih
+                ax1, ay1, aw, ah = x1 + ix, y1 + iy, iw, ih
             else:
-                inset_x = int((x2 - x1) * 0.05)
-                inset_y = int((y2 - y1) * 0.05)
-                bx1, by1 = x1 + inset_x, y1 + inset_y
-                bw, bh = (x2 - x1) - 2 * inset_x, (y2 - y1) - 2 * inset_y
+                ax1, ay1, aw, ah = x1, y1, (x2 - x1), (y2 - y1)
+            # MARGEM DE SEGURANCA: o texto NAO pode encostar na borda do balao.
+            # O balao (fala/pensamento) e OVAL -> precisa de recuo maior que uma
+            # caixa retangular (narracao/grito), senao o texto bate na curva.
+            mfrac = 0.13 if btype in ("fala", "pensamento") else 0.07
+            mx, my = int(aw * mfrac), int(ah * mfrac)
+            bx1, by1 = ax1 + mx, ay1 + my
+            bw, bh = aw - 2 * mx, ah - 2 * my
         if bw < 8 or bh < 8:
             continue
 
-        # Parametros por tipo de caixa (lettering de scan: tratamentos diferentes).
+        # Parametros por tipo de caixa (a MARGEM ja veio do recuo explicito acima;
+        # aqui o 'fill' so deixa um respiro fino dentro da area segura).
         if btype == "grito":
-            fill, max_font, stroke_div = 0.84, max(44, int(H * 0.085)), 7
+            fill, max_font, stroke_div = 0.94, max(44, int(H * 0.085)), 7
         elif is_sfx:
             fill, max_font, stroke_div = 0.88, max(22, int(H * 0.05)), 6
         elif btype == "narracao":
-            fill, max_font, stroke_div = 0.80, max(30, int(H * 0.05)), 18
+            fill, max_font, stroke_div = 0.92, max(30, int(H * 0.05)), 18
         else:  # fala / pensamento
-            fill, max_font, stroke_div = 0.72, max(34, int(H * 0.06)), 16
+            fill, max_font, stroke_div = 0.92, max(34, int(H * 0.06)), 16
 
         min_font = max(MIN_FONT_BASE, int(H * 0.016))
         font, wrapped, tw, th, spacing = fit_text(
