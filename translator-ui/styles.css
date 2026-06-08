@@ -173,7 +173,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: calc(100vh - 320px);
+  max-height: 260px;
   overflow: auto;
   padding-right: 4px;
 }
@@ -328,34 +328,55 @@ textarea {
 .translation-box {
   position: absolute;
   border: 2px solid rgba(22, 115, 111, 0.92);
-  background: rgba(248, 252, 252, 0.88);
+  background: rgba(255, 255, 255, 0.94);
   border-radius: var(--radius-md);
-  padding: 10px;
-  overflow: hidden;
-  cursor: move;
-  box-shadow: 0 8px 24px rgba(30, 22, 16, 0.16);
-  text-align: center;
+  overflow: visible;
+  box-shadow: 0 6px 18px rgba(30, 22, 16, 0.14);
 }
 
 .translation-box.selected {
   border-color: #255c99;
-  box-shadow: 0 0 0 3px rgba(37, 92, 153, 0.16);
+  box-shadow: 0 0 0 3px rgba(37, 92, 153, 0.28);
+  z-index: 5;
 }
 
-.translation-box .box-label {
-  font-size: 0.78rem;
-  color: var(--muted);
-  margin-bottom: 6px;
-}
-
-.translation-box .box-text {
-  font-weight: 700;
-  line-height: 1.08;
+.box-handle {
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 999px;
   display: grid;
-  min-height: calc(100% - 20px);
   place-items: center;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #fff;
+  cursor: move;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  z-index: 6;
+}
+
+.box-input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  resize: none;
+  text-align: center;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #111;
+  padding: 6px;
+  overflow: hidden;
+  font-family: inherit;
+}
+
+.box-input::placeholder {
+  color: rgba(40, 40, 40, 0.4);
+  font-weight: 600;
 }
 
 .editor-panel {
@@ -542,4 +563,56 @@ textarea {
 .conf-mid  { background: #f1c40f; }
 .conf-low  { background: #e74c3c; }
 .conf-none { background: #7f8c8d; }
+
+/* Editor inline: dica, linha de sugestão e painel enxuto */
+.editor-hint {
+  margin: 6px 0 2px;
+  line-height: 1.35;
+}
+
+.field-label {
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.final-field .field-label strong { color: var(--ink); }
+
+.ref-field textarea[readonly] {
+  background: rgba(31, 42, 55, 0.04);
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.suggestion-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+  background: rgba(31, 42, 55, 0.05);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+}
+.suggestion-row #suggested-preview {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ghost-button.small {
+  padding: 5px 10px;
+  font-size: 0.8rem;
+}
+
+.conf-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.conf-badge:empty { display: none; }
 

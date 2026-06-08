@@ -46,6 +46,7 @@
         <section class="viewer-grid">
           <div class="viewer-panel">
             <div id="page-meta" class="status">Selecione um capitulo na lateral.</div>
+            <div class="editor-hint muted small">Clique num balão e digite a tradução ali mesmo. As cores 🟢 🟡 🔴 mostram a confiança da detecção.</div>
             <div id="viewer-stage" class="viewer-stage empty">
               <div id="page-canvas" class="page-canvas">
                 <img id="page-image" alt="Pagina do manga">
@@ -90,56 +91,43 @@
 
             <section class="panel">
               <div class="panel-header">
-                <h2>Revisao</h2>
+                <h2 id="review-title">Revisão</h2>
                 <button id="remove-box" class="ghost-button danger" type="button">Remover</button>
               </div>
 
               <form id="box-form" class="box-form">
-                <label>
-                  Texto original
-                  <textarea id="original-text" rows="4" placeholder="Cole ou escreva o texto original"></textarea>
+                <label class="ref-field">
+                  <span class="field-label">Original <span id="original-conf" class="conf-badge"></span></span>
+                  <textarea id="original-text" rows="2" readonly placeholder="—"></textarea>
                 </label>
 
-                <label>
-                  Sugestao
-                  <textarea id="suggested-text" rows="4" placeholder="Sugestao gerada ou revisada"></textarea>
-                </label>
-
-                <label>
-                  Final PT-BR
-                  <textarea id="translated-text" rows="5" placeholder="Traducao final aprovada"></textarea>
-                </label>
-
-                <div class="option-grid">
-                  <label class="check-option">
-                    <input id="cover-original" type="checkbox" checked>
-                    Cobrir original
-                  </label>
-                  <label>
-                    Fonte
-                    <input id="font-size" type="number" min="8" max="72" step="1" value="18">
-                  </label>
+                <div class="suggestion-row">
+                  <span id="suggested-preview" class="muted small">Sem sugestão ainda.</span>
+                  <button id="use-suggestion" class="ghost-button small" type="button" disabled>Usar</button>
                 </div>
 
+                <label class="final-field">
+                  <span class="field-label"><strong>Tradução final</strong> — ou digite direto no balão</span>
+                  <textarea id="translated-text" rows="4" placeholder="Digite a tradução em PT-BR"></textarea>
+                </label>
+
                 <details class="details-panel">
-                  <summary>Posicao na pagina</summary>
+                  <summary>Ajustes avançados</summary>
+                  <div class="option-grid">
+                    <label class="check-option">
+                      <input id="cover-original" type="checkbox" checked>
+                      Cobrir original
+                    </label>
+                    <label>
+                      Fonte
+                      <input id="font-size" type="number" min="8" max="72" step="1" value="18">
+                    </label>
+                  </div>
                   <div class="coord-grid">
-                    <label>
-                      X (%)
-                      <input id="box-x" type="number" min="0" max="100" step="0.1">
-                    </label>
-                    <label>
-                      Y (%)
-                      <input id="box-y" type="number" min="0" max="100" step="0.1">
-                    </label>
-                    <label>
-                      Largura (%)
-                      <input id="box-width" type="number" min="1" max="100" step="0.1">
-                    </label>
-                    <label>
-                      Altura (%)
-                      <input id="box-height" type="number" min="1" max="100" step="0.1">
-                    </label>
+                    <label>X (%)<input id="box-x" type="number" min="0" max="100" step="0.1"></label>
+                    <label>Y (%)<input id="box-y" type="number" min="0" max="100" step="0.1"></label>
+                    <label>Largura (%)<input id="box-width" type="number" min="1" max="100" step="0.1"></label>
+                    <label>Altura (%)<input id="box-height" type="number" min="1" max="100" step="0.1"></label>
                   </div>
                 </details>
               </form>

@@ -2,6 +2,7 @@
 import { state, elements, clamp } from "./state.js";
 import {
   renderCurrentPage,
+  renderTranslationList,
   addBox,
   getCurrentPageRecord,
   getSelectedBox,
@@ -52,9 +53,23 @@ function wireEvents() {
     renderCurrentPage();
   });
 
-  elements.originalText.addEventListener("input", () => updateSelectedBox({ originalText: elements.originalText.value }));
-  elements.suggestedText.addEventListener("input", () => updateSelectedBox({ suggestedText: elements.suggestedText.value }));
-  elements.translatedText.addEventListener("input", () => updateSelectedBox({ translatedText: elements.translatedText.value }));
+  elements.translatedText.addEventListener("input", () => {
+    const box = getSelectedBox();
+    if (!box) return;
+    box.translatedText = elements.translatedText.value;
+    const inline = elements.boxLayer.querySelector(".translation-box.selected .box-input");
+    if (inline) inline.value = box.translatedText;
+    renderTranslationList();
+  });
+  elements.useSuggestion.addEventListener("click", () => {
+    const box = getSelectedBox();
+    if (!box || !box.suggestedText) return;
+    box.translatedText = box.suggestedText;
+    elements.translatedText.value = box.translatedText;
+    const inline = elements.boxLayer.querySelector(".translation-box.selected .box-input");
+    if (inline) inline.value = box.translatedText;
+    renderTranslationList();
+  });
   elements.coverOriginal.addEventListener("change", () => updateSelectedBox({ coverOriginal: elements.coverOriginal.checked }));
   elements.fontSize.addEventListener("input", () => updateSelectedBox({ fontSize: Number(elements.fontSize.value) || 18 }));
 

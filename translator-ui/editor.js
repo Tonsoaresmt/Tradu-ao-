@@ -148,9 +148,8 @@ export function syncBoxForm() {
   const disabled = !box;
 
   for (const field of [
-    elements.originalText,
-    elements.suggestedText,
     elements.translatedText,
+    elements.useSuggestion,
     elements.coverOriginal,
     elements.fontSize,
     elements.boxX,
@@ -159,12 +158,16 @@ export function syncBoxForm() {
     elements.boxHeight,
     elements.removeBox
   ]) {
-    field.disabled = disabled;
+    if (field) field.disabled = disabled;
   }
 
   if (!box) {
+    elements.reviewTitle.textContent = "Revisão";
     elements.originalText.value = "";
-    elements.suggestedText.value = "";
+    elements.originalConf.textContent = "";
+    elements.originalConf.className = "conf-badge";
+    elements.suggestedPreview.textContent = "Selecione uma fala (clique num balão).";
+    elements.useSuggestion.disabled = true;
     elements.translatedText.value = "";
     elements.coverOriginal.checked = true;
     elements.fontSize.value = "18";
@@ -175,8 +178,19 @@ export function syncBoxForm() {
     return;
   }
 
+  elements.reviewTitle.textContent = `Fala ${String(box.order).padStart(2, "0")}`;
   elements.originalText.value = box.originalText || "";
-  elements.suggestedText.value = box.suggestedText || "";
+  if (typeof box.confidence === "number") {
+    elements.originalConf.textContent = `${box.confidence}%`;
+    elements.originalConf.className = `conf-badge ${confClass(box.confidence)}`;
+  } else {
+    elements.originalConf.textContent = "";
+    elements.originalConf.className = "conf-badge";
+  }
+  elements.suggestedPreview.textContent = box.suggestedText
+    ? `Sugestão: ${box.suggestedText}`
+    : "Sem sugestão (use o botão Sugerir).";
+  elements.useSuggestion.disabled = !box.suggestedText;
   elements.translatedText.value = box.translatedText || "";
   elements.coverOriginal.checked = box.coverOriginal !== false;
   elements.fontSize.value = box.fontSize || 18;
@@ -190,38 +204,27 @@ export function renderBoxes() {
   elements.boxLayer.innerHTML = "";
 
   for (const box of orderedBoxes()) {
-    const boxNode = document.createElement("button");
-    boxNode.type = "button";
-    boxNode.className = "translation-box";
-    if (box.id === state.selectedBoxId) boxNode.classList.add("selected");
+    const node = document.createElement("div");
+    node.className = "translation-box";
+    node.dataset.id = box.id;
+    if (box.id === state.selectedBoxId) node.classList.add("selected");
 
-    boxNode.style.left = `${box.x * 100}%`;
-    boxNode.style.top = `${box.y * 100}%`;
-    boxNode.style.width = `${box.width * 100}%`;
-    boxNode.style.height = `${box.height * 100}%`;
-    boxNode.style.background = box.coverOriginal === false
+    node.style.left = `${box.x * 100}%`;
+    node.style.top = `${box.y * 100}%`;
+    node.style.width = `${box.width * 100}%`;
+    node.style.height = `${box.height * 100}%`;
+    node.style.background = box.coverOriginal === false
       ? "rgba(248, 252, 252, 0.34)"
       : "rgba(255, 255, 255, 0.94)";
-    boxNode.style.fontSize = `${box.fontSize || 18}px`;
 
-    const label = document.createElement("div");
-    label.className = "box-label";
-    label.textContent = `Fala ${String(box.order).padStart(2, "0")}`;
-
-    const text = document.createElement("div");
-    text.className = "box-text";
-    text.textContent = box.translatedText || box.suggestedText || box.originalText || "...";
-
-    boxNode.append(label, text);
-    boxNode.addEventListener("click", (event) => {
+    // Alça numerada (cor = confiança): clique seleciona, arraste move.
+    const handle = document.createElement("div");
+    handle.className = `box-handle ${confClass(box.confidence)}`;
+    handle.textContent = String(box.order).padStart(2, "0");
+    handle.title = "Arraste para mover";
+    handle.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
       selectBox(box.id);
-    });
-
-    boxNode.addEventListener("pointerdown", (event) => {
-      event.stopPropagation();
-      selectBox(box.id);
-
       state.drag = {
         id: box.id,
         startClientX: event.clientX,
@@ -229,11 +232,27 @@ export function renderBoxes() {
         startX: box.x,
         startY: box.y
       };
-
-      boxNode.setPointerCapture(event.pointerId);
+      handle.setPointerCapture(event.pointerId);
     });
 
-    elements.boxLayer.appendChild(boxNode);
+    // Editor inline: digite a tradução final direto no balão.
+    const input = document.createElement("textarea");
+    input.className = "box-input";
+    input.value = box.translatedText || "";
+    input.placeholder = box.suggestedText || box.originalText || "traduzir...";
+    input.style.fontSize = `${box.fontSize || 18}px`;
+    input.addEventListener("pointerdown", (event) => event.stopPropagation());
+    input.addEventListener("focus", () => {
+      if (state.selectedBoxId !== box.id) selectBox(box.id);
+    });
+    input.addEventListener("input", () => {
+      box.translatedText = input.value;
+      if (elements.translatedText) elements.translatedText.value = input.value;
+      renderTranslationList();
+    });
+
+    node.append(handle, input);
+    elements.boxLayer.appendChild(node);
   }
 }
 
@@ -280,8 +299,13 @@ export function toolSummary() {
 
 export function selectBox(id) {
   state.selectedBoxId = id;
-  renderBoxes();
+  // Atualiza a seleção sem recriar os balões (preserva o foco/cursor do campo inline).
+  for (const node of elements.boxLayer.children) {
+    node.classList.toggle("selected", node.dataset.id === id);
+  }
   renderTranslationList();
+  const activeItem = elements.translationList.querySelector(".line-item.selected");
+  if (activeItem) activeItem.scrollIntoView({ block: "nearest" });
   syncBoxForm();
 }
 
@@ -292,7 +316,10 @@ export function addBox(values = {}) {
   const box = createBox(values);
   pageRecord.boxes.push(box);
   normalizeBoxes();
-  selectBox(box.id);
+  state.selectedBoxId = box.id;
+  renderBoxes();
+  renderTranslationList();
+  syncBoxForm();
   return box;
 }
 
