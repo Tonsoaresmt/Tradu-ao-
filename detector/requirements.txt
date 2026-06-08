@@ -8,5 +8,10 @@
 ultralytics>=8.1.0
 huggingface_hub>=0.20.0
 Pillow>=10.0.0
-pytesseract>=0.3.10   # OCR 'tesseract' — inglês->PT-BR (precisa do binário Tesseract instalado)
+pytesseract>=0.3.10   # OCR 'tesseract' — inglês rápido (precisa do binário Tesseract instalado); usado como reserva
 manga-ocr>=0.1.11     # OCR 'manga-ocr' — japonês (baixa transformers + modelo ~400MB na 1a vez)
+# OCR 'easyocr' (PADRÃO p/ inglês) — IA, lê lettering estilizado/pequeno muito melhor que o Tesseract.
+# Baixa o modelo de EN (~64MB) na 1a vez. Use opencv-python (já presente via ultralytics), NÃO o headless:
+#   pip install easyocr --no-deps
+#   pip install scikit-image lazy-loader imageio tifffile ninja python-bidi pyclipper shapely
+easyocr>=1.7.2

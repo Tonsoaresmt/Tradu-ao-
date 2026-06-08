@@ -36,7 +36,7 @@ HOST = os.environ.get("DETECTOR_HOST", "127.0.0.1")
 BUBBLE_MODEL = os.environ.get("BUBBLE_MODEL", "")
 BUBBLE_REPO = os.environ.get("BUBBLE_REPO", "kitsumed/yolov8m_seg-speech-bubble")
 BUBBLE_FILE = os.environ.get("BUBBLE_FILE", "model.pt")
-OCR_ENGINE = os.environ.get("OCR_ENGINE", "tesseract").lower()
+OCR_ENGINE = os.environ.get("OCR_ENGINE", "easyocr").lower()
 OCR_LANG = os.environ.get("OCR_LANG", "eng")
 YOLO_CONF = float(os.environ.get("YOLO_CONF", "0.15"))
 
@@ -110,6 +110,13 @@ def get_ocr(engine):
             _state["ocr_engines"][engine] = obj
             log("manga-ocr pronto.")
             return obj
+        if engine == "easyocr":
+            import easyocr
+            log("carregando easyocr (IA, baixa o modelo de EN na 1a vez)...")
+            reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+            _state["ocr_engines"][engine] = reader
+            log("easyocr pronto.")
+            return reader
         if engine == "tesseract":
             import pytesseract
             _configure_tesseract(pytesseract)
@@ -160,6 +167,20 @@ def ocr_crop(engine, pil_image):
     try:
         if engine == "manga-ocr":
             return (ocr(pil_image) or "").strip()
+        if engine == "easyocr":
+            import numpy as np
+            import cv2
+            arr = np.array(pil_image.convert("RGB"))
+            h, w = arr.shape[:2]
+            if max(h, w) < 720:                  # amplia texto pequeno (ajuda o detector)
+                s = 720.0 / max(h, w)
+                arr = cv2.resize(arr, (max(1, int(w * s)), max(1, int(h * s))), interpolation=cv2.INTER_CUBIC)
+            results = ocr.readtext(arr, detail=1, paragraph=False)
+            results.sort(key=lambda r: (r[0][0][1], r[0][0][0]))  # ordem de leitura: cima->baixo
+            parts = [t for (_b, t, conf) in results if conf >= 0.3]
+            import re
+            text = re.sub(r"[|\\_~{}\[\]<>]", "", " ".join(parts))
+            return " ".join(text.split()).strip()
         if engine == "tesseract":
             prepped = _prep_for_tesseract(pil_image)
             cands = [_tesseract_text(prepped, 6)]    # PSM 6: bloco uniforme (bom p/ balão)
@@ -255,6 +276,10 @@ def detect(image_path, engine=None):
             text = ocr_crop(engine, ocr_src)
             if not text and ocr_src is not crop:
                 text = ocr_crop(engine, crop)
+            # Reserva: se o motor principal (ex.: easyocr) falhar num balão,
+            # tenta o Tesseract — o melhor dos dois mundos.
+            if not text and engine not in ("tesseract", "none", ""):
+                text = ocr_crop("tesseract", ocr_src) or ocr_crop("tesseract", crop)
             lines.append({
                 "originalText": text,
                 "confidence": round(conf * 100),
