@@ -651,6 +651,17 @@ body { height: 100vh; overflow: hidden; }
 .viewer-stage.ready #page-image-original { display: block; }
 .zoom-controls { display: inline-flex; align-items: center; gap: 6px; }
 .zoom-controls #zoom-label { min-width: 42px; text-align: center; }
+
+/* ===== Modo leitura: esconde bordas/IDs/painel auxiliar, mostra só o resultado ===== */
+body.reading-mode .page-pane.original-pane { display: none; }
+body.reading-mode .dual-view { grid-template-columns: 1fr; }
+body.reading-mode .pane-label,
+body.reading-mode .box-handle { display: none; }
+body.reading-mode .translation-box {
+  border-color: transparent;
+  box-shadow: none;
+}
+body.reading-mode .box-input { cursor: default; }
 .manga-card,
 .chapter-button,
 .page-button,

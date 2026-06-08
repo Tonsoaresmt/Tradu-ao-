@@ -121,3 +121,64 @@ export async function copyOriginals() {
   await navigator.clipboard.writeText(text);
   setToolStatus("Textos originais copiados.");
 }
+
+function bestOverlap(box, oldBoxes) {
+  let best = null;
+  let bestArea = 0;
+  const ax2 = box.x + box.width;
+  const ay2 = box.y + box.height;
+  for (const o of oldBoxes) {
+    const ix = Math.max(0, Math.min(ax2, o.x + o.width) - Math.max(box.x, o.x));
+    const iy = Math.max(0, Math.min(ay2, o.y + o.height) - Math.max(box.y, o.y));
+    const inter = ix * iy;
+    if (inter > bestArea) {
+      bestArea = inter;
+      best = o;
+    }
+  }
+  return bestArea > 0 ? best : null;
+}
+
+// Auto Organizar: redetecta os balões da página (caixas justas) e preserva as
+// traduções, casando cada balão novo com o antigo mais sobreposto.
+export async function autoOrganize() {
+  const page = getCurrentPage();
+  if (!page) {
+    setToolStatus("Abra uma pagina antes de auto organizar.");
+    return;
+  }
+
+  setToolStatus("Auto organizando (redetectando baloes)...");
+  const result = await api("/api/ocr-page", {
+    method: "POST",
+    body: JSON.stringify({
+      manga: state.selectedManga,
+      chapter: state.selectedChapter,
+      page: page.name,
+      ocr: elements.ocrEngine?.value
+    })
+  });
+
+  if (!result.available || !Array.isArray(result.lines) || !result.lines.length) {
+    setToolStatus(result.message || "Nenhum balao detectado.");
+    return;
+  }
+
+  const oldBoxes = getCurrentPageRecord().boxes || [];
+  const newBoxes = result.lines.map((line, index) => {
+    const box = createBox({ ...line, order: index + 1, suggestedText: "", translatedText: "" });
+    const match = bestOverlap(box, oldBoxes);
+    if (match) {
+      box.translatedText = match.translatedText || "";
+      box.suggestedText = match.suggestedText || "";
+    }
+    return box;
+  });
+
+  getCurrentPageRecord().boxes = newBoxes;
+  state.selectedBoxId = newBoxes[0]?.id || null;
+  normalizeBoxes();
+  renderCurrentPage();
+  const kept = newBoxes.filter((box) => box.translatedText || box.suggestedText).length;
+  setToolStatus(`Auto organizado: ${newBoxes.length} balao(oes) reposicionado(s), ${kept} traducao(oes) preservada(s).`);
+}

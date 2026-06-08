@@ -7,6 +7,8 @@ import {
   addBox,
   getCurrentPageRecord,
   getSelectedBox,
+  orderedBoxes,
+  selectBox,
   normalizeBoxes,
   updateSelectedBox,
   startDraw,
@@ -16,10 +18,27 @@ import {
   setToolStatus
 } from "./editor.js";
 import { loadLibrary, saveProject } from "./library.js";
-import { runOcr, suggestPage, applySuggestions, acceptConfident, copyOriginals } from "./translator.js";
+import { runOcr, suggestPage, applySuggestions, acceptConfident, copyOriginals, autoOrganize } from "./translator.js";
 import { previewPage } from "./preview.js";
 import { exportChapter, preprocessChapter } from "./export.js";
 import { initAutosave } from "./autosave.js";
+
+function toggleReading() {
+  state.reading = !state.reading;
+  document.body.classList.toggle("reading-mode", state.reading);
+  elements.readingMode.textContent = state.reading ? "Editar" : "Leitura";
+  requestAnimationFrame(() => applyZoom());
+}
+
+function navigateBox(dir) {
+  const boxes = orderedBoxes();
+  if (!boxes.length) return;
+  const idx = boxes.findIndex((b) => b.id === state.selectedBoxId);
+  const ni = idx < 0 ? (dir > 0 ? 0 : boxes.length - 1) : (idx + dir + boxes.length) % boxes.length;
+  selectBox(boxes[ni].id);
+  const input = elements.boxLayer.querySelector(`.translation-box[data-id="${boxes[ni].id}"] .box-input`);
+  if (input) input.focus({ preventScroll: true });
+}
 
 function wireEvents() {
   elements.reloadLibrary.addEventListener("click", loadLibrary);
@@ -48,6 +67,8 @@ function wireEvents() {
   elements.suggestPage.addEventListener("click", () => suggestPage().catch((error) => setToolStatus(error.message)));
   elements.applySuggestions.addEventListener("click", applySuggestions);
   elements.acceptConfident.addEventListener("click", () => acceptConfident(90));
+  elements.autoOrganize.addEventListener("click", () => autoOrganize().catch((error) => setToolStatus(error.message)));
+  elements.readingMode.addEventListener("click", toggleReading);
   elements.copyOriginals.addEventListener("click", () => copyOriginals().catch((error) => setToolStatus(error.message)));
   elements.removeBox.addEventListener("click", () => {
     const pageRecord = getCurrentPageRecord();
@@ -103,6 +124,33 @@ function wireEvents() {
   elements.boxLayer.addEventListener("pointerdown", startDraw);
   window.addEventListener("pointermove", handlePointerMove);
   window.addEventListener("pointerup", handlePointerUp);
+
+  // Atalhos: Tab/Shift+Tab navegam falas; Ctrl+S salva; Ctrl+Enter salva e vai p/ proxima pagina.
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Tab") {
+      event.preventDefault();
+      navigateBox(event.shiftKey ? -1 : 1);
+      return;
+    }
+    const mod = event.ctrlKey || event.metaKey;
+    if (mod && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      saveProject().catch((error) => setStatus(error.message));
+      return;
+    }
+    if (mod && event.key === "Enter") {
+      event.preventDefault();
+      saveProject()
+        .then(() => {
+          if (state.currentPageIndex < state.pages.length - 1) {
+            state.currentPageIndex += 1;
+            state.selectedBoxId = null;
+            renderCurrentPage();
+          }
+        })
+        .catch((error) => setStatus(error.message));
+    }
+  });
 }
 
 wireEvents();

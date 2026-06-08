@@ -11,6 +11,7 @@ export const state = {
   drag: null,
   draw: null,
   previewing: false,
+  reading: false,
   zoom: 1
 };
 
@@ -48,6 +49,8 @@ export const elements = {
   applySuggestions: document.querySelector("#apply-suggestions"),
   copyOriginals: document.querySelector("#copy-originals"),
   acceptConfident: document.querySelector("#accept-confident"),
+  autoOrganize: document.querySelector("#auto-organize"),
+  readingMode: document.querySelector("#reading-mode"),
   toolStatus: document.querySelector("#tool-status"),
   translationList: document.querySelector("#translation-list"),
   lineCounter: document.querySelector("#line-counter"),
