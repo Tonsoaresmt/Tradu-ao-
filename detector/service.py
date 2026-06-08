@@ -695,10 +695,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/health"):
             default = _state["default_engine"]
+            gpu = False
+            try:
+                import torch
+                gpu = bool(torch.cuda.is_available())
+            except Exception:
+                gpu = False
             self._send(200, {
                 "ok": True,
                 "yolo": _state["yolo"] is not None,
                 "yoloError": _state["yolo_error"],
+                "gpu": gpu,
                 "ocrEngine": default,
                 "ocrReady": default in _state["ocr_engines"],
                 "ocrLoaded": list(_state["ocr_engines"].keys()),

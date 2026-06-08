@@ -1503,6 +1503,16 @@ const server = http.createServer(async (req, res) => {
       const ocrAvailable = await commandAvailable(OCR_COMMAND);
       const windowsOcrAvailable = process.platform === "win32" && await fs.pathExists(WINDOWS_OCR_SCRIPT);
       const ollamaAvailable = await localServerAvailable(`${OLLAMA_URL}/api/tags`);
+      const ollamaModel = ollamaAvailable ? await getOllamaModel().catch(() => "") : "";
+      // Provedor EFETIVO (o que sera usado de fato), respeitando o modo configurado.
+      let effectiveProvider;
+      if (TRANSLATOR_PROVIDER === "google") effectiveProvider = "google";
+      else if (TRANSLATOR_PROVIDER === "ollama") effectiveProvider = ollamaAvailable ? "ollama" : "local-basic";
+      else effectiveProvider = ollamaAvailable
+        ? "ollama"
+        : (USE_OPENAI && process.env.OPENAI_API_KEY) ? "openai"
+        : LIBRETRANSLATE_URL ? "libretranslate"
+        : "google";
       const detector = await detectorHealth();
       const detectorPythonReady = await fs.pathExists(DETECTOR_PYTHON);
       sendJson(res, 200, {
@@ -1511,6 +1521,7 @@ const server = http.createServer(async (req, res) => {
           bubbleDetector: {
             running: Boolean(detector),
             yolo: detector?.yolo || false,
+            gpu: detector?.gpu || false,
             ocrEngine: detector?.ocrEngine || DETECTOR_OCR,
             ocrReady: detector?.ocrReady || false,
             pythonReady: detectorPythonReady,
@@ -1527,14 +1538,10 @@ const server = http.createServer(async (req, res) => {
             }
           },
           translation: {
-            provider: ollamaAvailable
-              ? "ollama"
-              : USE_OPENAI && process.env.OPENAI_API_KEY
-              ? "openai"
-              : LIBRETRANSLATE_URL
-                ? "libretranslate"
-                : "local-basic",
-            ollamaAvailable
+            configured: TRANSLATOR_PROVIDER,
+            provider: effectiveProvider,
+            ollamaAvailable,
+            ollamaModel
           }
         },
         folders: {

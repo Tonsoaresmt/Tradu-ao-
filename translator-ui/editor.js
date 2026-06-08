@@ -368,6 +368,43 @@ export function toolSummary() {
   return `${ocr}. Sugestao: ${provider}.`;
 }
 
+// Barra de status do sistema: mostra de forma clara o que esta ativo
+// (detector, OCR + GPU, e qual IA de traducao). Some a duvida "esta funcionando?".
+const _OCR_NAMES = { easyocr: "EasyOCR", tesseract: "Tesseract", "manga-ocr": "MangaOCR", none: "—" };
+export function renderSystemStatus() {
+  const el = elements.systemStatus;
+  if (!el) return;
+  const det = state.tools?.bubbleDetector || {};
+  const tr = state.tools?.translation || {};
+  const provider = tr.provider || "local-basic";
+
+  const pill = (cls, label, title) =>
+    `<span class="sys-pill ${cls}" title="${title}"><span class="sys-dot"></span>${label}</span>`;
+
+  // Detector de balões
+  const det1 = det.yolo
+    ? pill("on", "Detector", "YOLO carregado — detecta os balões")
+    : pill("off", "Detector", det.pythonReady ? "Detector vai carregar no 1º uso" : "Detector indisponível (rode a venv do Python)");
+
+  // OCR + GPU
+  const ocrName = _OCR_NAMES[det.ocrEngine] || det.ocrEngine || "OCR";
+  const ocrLabel = `${ocrName}${det.gpu ? " · GPU" : " · CPU"}`;
+  const det2 = pill(det.ocrReady ? "on" : "warn", ocrLabel,
+    det.gpu ? "OCR por IA, rodando na GPU (rápido)" : "OCR por IA, rodando na CPU");
+
+  // Tradução (IA)
+  let det3;
+  if (provider === "ollama") {
+    det3 = pill("on accent", `IA: ${tr.ollamaModel || "Ollama"}`, "Traduzindo com IA local (Ollama) — melhor qualidade");
+  } else if (provider === "google") {
+    det3 = pill("on", "Tradução: Google", "Tradutor Google (rápido, mais literal). Abra o Ollama p/ qualidade.");
+  } else {
+    det3 = pill("off", "Tradução: básica", "Sem IA nem Google — abra o Ollama ou verifique a conexão");
+  }
+
+  el.innerHTML = det1 + det2 + det3;
+}
+
 export function applyZoom() {
   const z = state.zoom || 1;
   const stage = elements.viewerStage;

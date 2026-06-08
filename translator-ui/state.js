@@ -22,6 +22,7 @@ export const elements = {
   folderInfo: document.querySelector("#folder-info"),
   chapterTitle: document.querySelector("#chapter-title"),
   chapterSubtitle: document.querySelector("#chapter-subtitle"),
+  systemStatus: document.querySelector("#system-status"),
   pageMeta: document.querySelector("#page-meta"),
   pageCounter: document.querySelector("#page-counter"),
   pageSource: document.querySelector("#page-source"),

@@ -195,8 +195,15 @@ export async function autoTranslatePage(page) {
     }
   }
 
+  // Qual motor traduziu de fato (pra deixar claro o que aconteceu).
+  const provs = [...byId.values()].map((s) => s.provider || "").filter(Boolean);
+  const motor = provs.some((p) => p.startsWith("ollama")) ? "IA (Ollama)"
+    : provs.includes("google") ? "Google"
+    : provs.some((p) => p === "memoria") ? "memória"
+    : "básico";
+
   if (onThisPage()) renderCurrentPage();
-  status(`Página traduzida: ${record.boxes.length} fala(s). Revise o que precisar.`);
+  status(`✓ Página traduzida com ${motor}: ${record.boxes.length} fala(s). Revise o que precisar.`);
   return true;
 }
 

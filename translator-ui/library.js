@@ -1,7 +1,7 @@
 // Biblioteca de mangás/capítulos, abertura de capítulo e gravação do projeto.
 import { state, elements } from "./state.js";
 import { api } from "./api.js";
-import { renderCurrentPage, setStatus, setToolStatus, toolSummary } from "./editor.js";
+import { renderCurrentPage, setStatus, setToolStatus, toolSummary, renderSystemStatus } from "./editor.js";
 import { markChapterSaved } from "./autosave.js";
 
 export function renderFolders(folders) {
@@ -87,6 +87,7 @@ export async function loadLibrary() {
     state.tools = data.tools;
     renderFolders(data.folders);
     renderLibrary();
+    renderSystemStatus();
     setToolStatus(toolSummary());
   } catch (error) {
     elements.libraryStatus.textContent = error.message;

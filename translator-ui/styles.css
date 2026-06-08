@@ -604,6 +604,33 @@ textarea {
 }
 .conf-badge:empty { display: none; }
 
+/* Barra de status do sistema (Detector / OCR+GPU / IA de tradução) */
+.system-status { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.system-status:empty { display: none; }
+.sys-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--panel-border);
+  cursor: help;
+}
+.sys-pill .sys-dot { width: 8px; height: 8px; border-radius: 50%; background: #7f8c8d; flex: 0 0 auto; }
+.sys-pill.on { color: var(--ink); }
+.sys-pill.on .sys-dot { background: #2ecc71; }
+.sys-pill.warn .sys-dot { background: #f1c40f; }
+.sys-pill.off .sys-dot { background: #e74c3c; }
+.sys-pill.accent {
+  background: rgba(45, 212, 191, 0.16);
+  border-color: rgba(45, 212, 191, 0.5);
+  color: #6ee7d7;
+}
+
 /* Detalhe da fala: Original | Tradução lado a lado, com botões de copiar */
 .compare-grid {
   display: grid;
