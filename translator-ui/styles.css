@@ -678,6 +678,10 @@ body.reading-mode .box-input { cursor: default; }
   text-shadow: 0 0 3px rgba(255, 255, 255, 0.9);
   font-weight: 800;
 }
+
+/* ===== Modo simples: a barra "Avancado" fica escondida por padrao ===== */
+body:not(.advanced) .toolbar { display: none; }
+#toggle-advanced.on { background: var(--accent); color: #04201d; }
 .manga-card,
 .chapter-button,
 .page-button,

@@ -1084,7 +1084,7 @@ async function translateWithOllama(text, context = {}) {
   const response = await fetch(`${OLLAMA_URL}/api/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(30000),
     body: JSON.stringify({
       model,
       system: systemPrompt,

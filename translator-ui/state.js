@@ -12,6 +12,7 @@ export const state = {
   draw: null,
   previewing: false,
   reading: false,
+  advanced: false,
   zoom: 1
 };
 
@@ -51,6 +52,7 @@ export const elements = {
   acceptConfident: document.querySelector("#accept-confident"),
   autoOrganize: document.querySelector("#auto-organize"),
   readingMode: document.querySelector("#reading-mode"),
+  toggleAdvanced: document.querySelector("#toggle-advanced"),
   toolStatus: document.querySelector("#tool-status"),
   translationList: document.querySelector("#translation-list"),
   lineCounter: document.querySelector("#line-counter"),

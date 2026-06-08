@@ -295,6 +295,7 @@ export function renderCurrentPage() {
   syncBoxForm();
   setStatus(`Pagina ${page.index + 1} de ${state.pages.length}`);
   setToolStatus(toolSummary());
+  window.dispatchEvent(new CustomEvent("page-shown", { detail: { name: page.name } }));
 }
 
 export function toolSummary() {

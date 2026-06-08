@@ -18,7 +18,7 @@ import {
   setToolStatus
 } from "./editor.js";
 import { loadLibrary, saveProject } from "./library.js";
-import { runOcr, suggestPage, applySuggestions, acceptConfident, copyOriginals, autoOrganize } from "./translator.js";
+import { runOcr, suggestPage, applySuggestions, acceptConfident, copyOriginals, autoOrganize, autoTranslatePage } from "./translator.js";
 import { previewPage } from "./preview.js";
 import { exportChapter, preprocessChapter } from "./export.js";
 import { initAutosave } from "./autosave.js";
@@ -69,6 +69,27 @@ function wireEvents() {
   elements.acceptConfident.addEventListener("click", () => acceptConfident(90));
   elements.autoOrganize.addEventListener("click", () => autoOrganize().catch((error) => setToolStatus(error.message)));
   elements.readingMode.addEventListener("click", toggleReading);
+  elements.toggleAdvanced.addEventListener("click", () => {
+    state.advanced = !state.advanced;
+    document.body.classList.toggle("advanced", state.advanced);
+    elements.toggleAdvanced.classList.toggle("on", state.advanced);
+  });
+
+  // Auto-tradução: ao exibir uma página ainda sem caixas, traduz sozinho.
+  let autoBusy = false;
+  window.addEventListener("page-shown", async () => {
+    if (autoBusy) return;
+    const record = getCurrentPageRecord();
+    if (record && record.boxes && record.boxes.length) return;
+    autoBusy = true;
+    try {
+      await autoTranslatePage();
+    } catch (error) {
+      setToolStatus(error.message);
+    } finally {
+      autoBusy = false;
+    }
+  });
   elements.copyOriginals.addEventListener("click", () => copyOriginals().catch((error) => setToolStatus(error.message)));
   elements.removeBox.addEventListener("click", () => {
     const pageRecord = getCurrentPageRecord();

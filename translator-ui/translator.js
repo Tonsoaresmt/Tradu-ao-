@@ -122,6 +122,71 @@ export async function copyOriginals() {
   setToolStatus("Textos originais copiados.");
 }
 
+// Tradução automática da página atual (se ainda não tiver caixas): detecta +
+// OCR + traduz e já aplica como tradução final, pro humano só revisar.
+export async function autoTranslatePage() {
+  const page = getCurrentPage();
+  if (!page) return;
+  const record = getCurrentPageRecord();
+  if (record.boxes && record.boxes.length) return; // já processada
+
+  setToolStatus("Detectando os balões...");
+  const result = await api("/api/ocr-page", {
+    method: "POST",
+    body: JSON.stringify({
+      manga: state.selectedManga,
+      chapter: state.selectedChapter,
+      page: page.name,
+      ocr: elements.ocrEngine?.value
+    })
+  });
+  if (!result.available || !Array.isArray(result.lines)) {
+    setToolStatus(result.message || "Detecção indisponível.");
+    return;
+  }
+
+  record.boxes = result.lines.map((line, index) => createBox({
+    ...line,
+    order: index + 1,
+    suggestedText: "",
+    translatedText: ""
+  }));
+  normalizeBoxes();
+  renderCurrentPage(); // mostra os baloes posicionados + texto original JA (sem esperar a traducao)
+
+  const toTranslate = record.boxes.filter((box) => box.originalText);
+  if (!toTranslate.length) {
+    setToolStatus(`${record.boxes.length} balão(ões) detectado(s).`);
+    return;
+  }
+
+  setToolStatus(`Traduzindo ${toTranslate.length} fala(s)... (pode revisar enquanto isso)`);
+  const nearby = record.boxes.map((box) => box.originalText).filter(Boolean);
+  const sug = await api("/api/suggest-translation", {
+    method: "POST",
+    body: JSON.stringify({
+      context: {
+        manga: state.selectedManga,
+        chapter: state.selectedChapter,
+        page: page.name,
+        nearbyLines: nearby
+      },
+      items: toTranslate.map((box) => ({ id: box.id, originalText: box.originalText }))
+    })
+  });
+  const byId = new Map((sug.suggestions || []).map((s) => [s.id, s]));
+  for (const box of toTranslate) {
+    const s = byId.get(box.id);
+    if (s?.text) {
+      box.suggestedText = s.text;
+      box.translatedText = s.text;
+    }
+  }
+
+  renderCurrentPage();
+  setToolStatus(`Página traduzida: ${record.boxes.length} fala(s). Revise o que precisar.`);
+}
+
 function bestOverlap(box, oldBoxes) {
   let best = null;
   let bestArea = 0;

@@ -39,33 +39,35 @@
             <span id="page-counter" class="pill">0 / 0</span>
             <button id="prev-page" class="icon-button" type="button" title="Página anterior">‹</button>
             <button id="next-page" class="icon-button" type="button" title="Próxima página">›</button>
-            <button id="preprocess-chapter" class="ghost-button" type="button" title="Detectar + OCR + sugerir o capítulo todo">Pré-processar</button>
-            <button id="preview-page" class="ghost-button" type="button" title="Renderizar a página (inpaint + typeset)">Prévia</button>
-            <button id="reading-mode" class="ghost-button" type="button" title="Esconder bordas/IDs e ver só o resultado">Leitura</button>
-            <button id="save-project" class="primary-button" type="button">Salvar</button>
+            <span class="zoom-controls">
+              <button id="zoom-out" class="ghost-button small" type="button" title="Diminuir zoom">−</button>
+              <span id="zoom-label" class="muted small">100%</span>
+              <button id="zoom-in" class="ghost-button small" type="button" title="Aumentar zoom">+</button>
+              <button id="zoom-fit" class="ghost-button small" type="button" title="Ajustar à tela">Ajustar</button>
+            </span>
+            <button id="reading-mode" class="ghost-button" type="button" title="Esconder bordas e ver só o resultado">Leitura</button>
             <button id="export-chapter" class="primary-button" type="button" title="Inpaint + typeset + CBZ">Gerar CBZ</button>
+            <button id="toggle-advanced" class="ghost-button" type="button" title="Mostrar/ocultar ferramentas avançadas">⚙</button>
           </div>
         </header>
 
         <div class="toolbar">
+          <span class="muted small">Avançado:</span>
           <select id="ocr-engine" class="ghost-select" title="Idioma do OCR ao detectar">
             <option value="tesseract">EN · Tesseract</option>
             <option value="manga-ocr">JP · MangaOCR</option>
             <option value="none">Só posicionar</option>
           </select>
+          <button id="preprocess-chapter" class="ghost-button" type="button" title="Detectar + OCR + traduzir o capítulo todo">Pré-processar tudo</button>
           <button id="run-ocr" class="ghost-button" type="button">Detectar</button>
           <button id="suggest-page" class="ghost-button" type="button">Sugerir</button>
           <button id="apply-suggestions" class="ghost-button" type="button">Aplicar</button>
           <button id="accept-confident" class="ghost-button" type="button" title="Aceitar sugestões com confiança ≥90% no capítulo">Aceitar ≥90%</button>
           <button id="add-line" class="ghost-button" type="button">+ Caixa</button>
           <button id="auto-organize" class="ghost-button" type="button" title="Redetecta os balões e reposiciona, mantendo as traduções">Auto Organizar</button>
+          <button id="preview-page" class="ghost-button" type="button" title="Renderizar a página (inpaint + typeset)">Prévia</button>
+          <button id="save-project" class="ghost-button" type="button">Salvar</button>
           <button id="copy-originals" class="ghost-button" type="button">Copiar</button>
-          <span class="zoom-controls">
-            <button id="zoom-out" class="ghost-button small" type="button" title="Diminuir zoom">−</button>
-            <span id="zoom-label" class="muted small">100%</span>
-            <button id="zoom-in" class="ghost-button small" type="button" title="Aumentar zoom">+</button>
-            <button id="zoom-fit" class="ghost-button small" type="button" title="Ajustar à tela">Ajustar</button>
-          </span>
           <span id="tool-status" class="status grow">Abra uma página para começar.</span>
         </div>
 
