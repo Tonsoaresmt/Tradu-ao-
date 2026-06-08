@@ -97,6 +97,7 @@ function wireEvents() {
     if (inline) inline.value = box.translatedText;
     renderTranslationList();
   });
+  elements.boxType.addEventListener("change", () => updateSelectedBox({ type: elements.boxType.value }));
   elements.coverOriginal.addEventListener("change", () => updateSelectedBox({ coverOriginal: elements.coverOriginal.checked }));
   elements.fontSize.addEventListener("input", () => updateSelectedBox({ fontSize: Number(elements.fontSize.value) || 18 }));
 

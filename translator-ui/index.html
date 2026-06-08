@@ -109,6 +109,16 @@
             <details class="details-panel">
               <summary id="review-title">Detalhes da fala</summary>
               <form id="box-form" class="box-form">
+                <label class="type-field">
+                  <span class="field-label">Tipo da caixa</span>
+                  <select id="box-type" class="ghost-select">
+                    <option value="fala">Fala (balão)</option>
+                    <option value="narracao">Narração (caixa)</option>
+                    <option value="pensamento">Pensamento</option>
+                    <option value="grito">Grito</option>
+                    <option value="sfx">SFX / onomatopeia (não cobre a arte)</option>
+                  </select>
+                </label>
                 <label class="ref-field">
                   <span class="field-label">Original <span id="original-conf" class="conf-badge"></span></span>
                   <textarea id="original-text" rows="2" readonly placeholder="—"></textarea>

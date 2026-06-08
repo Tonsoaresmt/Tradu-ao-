@@ -278,12 +278,12 @@ def _hard_break(lines, font, max_width):
     return out
 
 
-def fit_text(draw, text, font_path, box_w, box_h, min_size=MIN_FONT_BASE, max_size=64):
+def fit_text(draw, text, font_path, box_w, box_h, min_size=MIN_FONT_BASE, max_size=64, fill=TARGET_FILL):
     """Maior fonte (>= min_size) cujo texto BALANCEADO cabe na area util do balao,
-    deixando margem confortavel (TARGET_FILL). No piso, gera mais linhas / hifeniza
+    deixando margem confortavel (fill). No piso, gera mais linhas / hifeniza
     em vez de reduzir a fonte indefinidamente. Retorna (font, wrapped, tw, th, spacing)."""
     from PIL import ImageFont
-    margin = (1 - TARGET_FILL ** 0.5) / 2   # margem por lado p/ ocupar ~72% da area
+    margin = (1 - fill ** 0.5) / 2   # margem por lado p/ ocupar ~fill da area
     avail_w = max(8, box_w * (1 - 2 * margin))
     avail_h = max(8, box_h * (1 - 2 * margin))
 
@@ -355,6 +355,8 @@ def render_image(image_path, boxes, font_path):
             continue
         if box.get("coverOriginal") is False:
             continue
+        if (box.get("type") or "fala").lower() == "sfx":
+            continue  # SFX: preserva a arte original (sem inpaint)
         x1, y1, x2, y2 = px(box)
         if x2 <= x1 or y2 <= y1:
             continue
@@ -375,30 +377,49 @@ def render_image(image_path, boxes, font_path):
         text = str(box.get("translatedText", "")).strip()
         if not text:
             continue
+        btype = (box.get("type") or "fala").lower()
+        is_sfx = btype == "sfx"
         x1, y1, x2, y2 = px(box)
-        # Encaixa o texto na AREA BRANCA real do balao (a caixa do YOLO costuma
-        # ser mais larga que o balao). Sem area branca clara -> recua 14%.
-        inner = bubble_inner_rect(img[y1:y2, x1:x2]) if box.get("coverOriginal") is not False else None
-        if inner:
-            ix, iy, iw, ih = inner
-            bx1, by1 = x1 + ix, y1 + iy
-            bw, bh = iw, ih
+
+        if is_sfx:
+            # SFX nao e balao: usa a caixa toda (a arte foi preservada).
+            bx1, by1, bw, bh = x1, y1, (x2 - x1), (y2 - y1)
         else:
-            inset_x = int((x2 - x1) * 0.05)
-            inset_y = int((y2 - y1) * 0.05)
-            bx1, by1 = x1 + inset_x, y1 + inset_y
-            bw, bh = (x2 - x1) - 2 * inset_x, (y2 - y1) - 2 * inset_y
+            # Encaixa na AREA BRANCA real do balao; sem area branca clara -> recua 5%.
+            inner = bubble_inner_rect(img[y1:y2, x1:x2]) if box.get("coverOriginal") is not False else None
+            if inner:
+                ix, iy, iw, ih = inner
+                bx1, by1 = x1 + ix, y1 + iy
+                bw, bh = iw, ih
+            else:
+                inset_x = int((x2 - x1) * 0.05)
+                inset_y = int((y2 - y1) * 0.05)
+                bx1, by1 = x1 + inset_x, y1 + inset_y
+                bw, bh = (x2 - x1) - 2 * inset_x, (y2 - y1) - 2 * inset_y
         if bw < 8 or bh < 8:
             continue
+
+        # Parametros por tipo de caixa (lettering de scan: tratamentos diferentes).
+        if btype == "grito":
+            fill, max_font, stroke_div = 0.84, max(44, int(H * 0.085)), 7
+        elif is_sfx:
+            fill, max_font, stroke_div = 0.88, max(22, int(H * 0.05)), 6
+        elif btype == "narracao":
+            fill, max_font, stroke_div = 0.80, max(30, int(H * 0.05)), 18
+        else:  # fala / pensamento
+            fill, max_font, stroke_div = 0.72, max(34, int(H * 0.06)), 16
+
         min_font = max(MIN_FONT_BASE, int(H * 0.016))
         font, wrapped, tw, th, spacing = fit_text(
             draw, text, font_path, bw, bh,
-            min_size=min_font, max_size=max(34, int(H * 0.06))
+            min_size=min_font, max_size=max_font, fill=fill
         )
-        # centraliza o bloco de texto na area util do balao (centro visual)
+        # centraliza o bloco de texto na area util (centro visual)
         tx = bx1 + (bw - tw) / 2
         ty = by1 + (bh - th) / 2
-        sw = max(1, getattr(font, "size", 14) // 16)
+        sw = max(1, getattr(font, "size", 14) // stroke_div)
+        if is_sfx or btype == "grito":
+            sw = max(2, sw)  # contorno forte pra ler sobre a arte
         draw.multiline_text((tx, ty), wrapped, font=font, fill="black",
                             align="center", spacing=spacing, stroke_width=sw, stroke_fill="white")
         rendered += 1

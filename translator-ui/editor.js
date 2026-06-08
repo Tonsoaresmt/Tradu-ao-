@@ -148,6 +148,7 @@ export function syncBoxForm() {
   const disabled = !box;
 
   for (const field of [
+    elements.boxType,
     elements.translatedText,
     elements.useSuggestion,
     elements.coverOriginal,
@@ -163,6 +164,7 @@ export function syncBoxForm() {
 
   if (!box) {
     elements.reviewTitle.textContent = "Revisão";
+    elements.boxType.value = "fala";
     elements.originalText.value = "";
     elements.originalConf.textContent = "";
     elements.originalConf.className = "conf-badge";
@@ -179,6 +181,7 @@ export function syncBoxForm() {
   }
 
   elements.reviewTitle.textContent = `Fala ${String(box.order).padStart(2, "0")}`;
+  elements.boxType.value = box.type || "fala";
   elements.originalText.value = box.originalText || "";
   if (typeof box.confidence === "number") {
     elements.originalConf.textContent = `${box.confidence}%`;
@@ -206,6 +209,7 @@ export function renderBoxes() {
   for (const box of orderedBoxes()) {
     const node = document.createElement("div");
     node.className = "translation-box";
+    node.classList.add(`type-${(box.type || "fala")}`);
     node.dataset.id = box.id;
     if (box.id === state.selectedBoxId) node.classList.add("selected");
 

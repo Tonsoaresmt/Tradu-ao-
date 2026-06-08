@@ -56,6 +56,7 @@ export const elements = {
   lineCounter: document.querySelector("#line-counter"),
   removeBox: document.querySelector("#remove-box"),
   reviewTitle: document.querySelector("#review-title"),
+  boxType: document.querySelector("#box-type"),
   originalText: document.querySelector("#original-text"),
   originalConf: document.querySelector("#original-conf"),
   suggestedPreview: document.querySelector("#suggested-preview"),

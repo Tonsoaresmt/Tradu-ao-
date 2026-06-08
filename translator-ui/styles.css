@@ -662,6 +662,22 @@ body.reading-mode .translation-box {
   box-shadow: none;
 }
 body.reading-mode .box-input { cursor: default; }
+
+/* ===== Tipos de caixa: cor da borda no editor ===== */
+.translation-box.type-fala { border-color: rgba(45, 212, 191, 0.9); }
+.translation-box.type-narracao { border-color: #60a5fa; }
+.translation-box.type-pensamento { border-color: #c084fc; }
+.translation-box.type-grito { border-color: #f87171; }
+.translation-box.type-sfx {
+  border-color: #fb923c;
+  border-style: dashed;
+  background: rgba(251, 146, 60, 0.12);   /* SFX: translucido (nao cobre a arte) */
+}
+.translation-box.type-sfx .box-input {
+  color: #d4530a;
+  text-shadow: 0 0 3px rgba(255, 255, 255, 0.9);
+  font-weight: 800;
+}
 .manga-card,
 .chapter-button,
 .page-button,

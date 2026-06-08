@@ -22,6 +22,7 @@ export async function previewPage() {
     y: box.y,
     width: box.width,
     height: box.height,
+    type: box.type || "fala",
     translatedText: box.translatedText || box.suggestedText || "",
     coverOriginal: box.coverOriginal !== false
   }));
