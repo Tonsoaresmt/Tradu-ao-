@@ -18,9 +18,11 @@ export function fitBoxFont(text, wPx, hPx) {
   if (wPx < 8 || hPx < 8) return 11;
   const availW = Math.max(8, wPx - _BOX_PAD * 2);
   const availH = Math.max(8, hPx - _BOX_PAD * 2);
-  if (!t) return Math.max(9, Math.min(15, Math.floor(availH * 0.5)));
+  if (!t) return Math.max(9, Math.min(Math.floor(availH * 0.45), 64));
 
-  let size = Math.max(8, Math.min(Math.floor(availH), 38));
+  // Teto alto (limitado pela ALTURA do balão, não por um px fixo) -> a fonte
+  // acompanha proporcionalmente o zoom, sem "fugir do padrão" em escala maior.
+  let size = Math.max(8, Math.min(Math.floor(availH), 240));
   for (; size >= 8; size--) {
     _measureCtx.font = `700 ${size}px sans-serif`;
     const words = t.split(/\s+/);

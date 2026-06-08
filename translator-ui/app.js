@@ -181,8 +181,30 @@ function wireEvents() {
   window.addEventListener("pointermove", handlePointerMove);
   window.addEventListener("pointerup", handlePointerUp);
 
+  // Ajuste fino de posicao do balao selecionado: Alt + setas (Alt+Shift = passo maior).
+  // Funciona mesmo digitando no balao (Alt nao interfere no cursor do texto).
+  function nudgeSelectedBox(dx, dy) {
+    const box = getSelectedBox();
+    if (!box) return false;
+    box.x = clamp(box.x + dx, 0, 1 - box.width);
+    box.y = clamp(box.y + dy, 0, 1 - box.height);
+    const node = elements.boxLayer.querySelector(`.translation-box[data-id="${box.id}"]`);
+    if (node) { node.style.left = `${box.x * 100}%`; node.style.top = `${box.y * 100}%`; }
+    if (elements.boxX) elements.boxX.value = (box.x * 100).toFixed(1);
+    if (elements.boxY) elements.boxY.value = (box.y * 100).toFixed(1);
+    return true;
+  }
+
   // Atalhos: Tab/Shift+Tab navegam falas; Ctrl+S salva; Ctrl+Enter salva e vai p/ proxima pagina.
   window.addEventListener("keydown", (event) => {
+    if (event.altKey && event.key.startsWith("Arrow")) {
+      const step = event.shiftKey ? 0.02 : 0.004;
+      const delta = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[event.key];
+      if (delta && nudgeSelectedBox(delta[0] * step, delta[1] * step)) {
+        event.preventDefault();
+        return;
+      }
+    }
     if (event.key === "Tab") {
       event.preventDefault();
       navigateBox(event.shiftKey ? -1 : 1);
