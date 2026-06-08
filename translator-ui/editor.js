@@ -263,19 +263,25 @@ export function renderCurrentPage() {
   renderPageList();
 
   if (!page) {
-    elements.viewerStage.classList.add("empty");
-    elements.viewerStage.classList.remove("ready");
+    for (const stage of [elements.viewerStage, elements.origStage]) {
+      stage.classList.add("empty");
+      stage.classList.remove("ready");
+    }
     elements.pageImage.removeAttribute("src");
+    elements.pageImageOriginal.removeAttribute("src");
     elements.boxLayer.innerHTML = "";
     renderTranslationList();
     syncBoxForm();
-    setStatus("Selecione um capitulo na lateral.");
+    setStatus("Selecione um capitulo na biblioteca.");
     setToolStatus("Abra uma pagina para comecar.");
     return;
   }
 
-  elements.viewerStage.classList.remove("empty");
-  elements.viewerStage.classList.add("ready");
+  for (const stage of [elements.viewerStage, elements.origStage]) {
+    stage.classList.remove("empty");
+    stage.classList.add("ready");
+  }
+  elements.pageImageOriginal.src = page.url;
   elements.pageImage.src = page.url;
   elements.pageImage.onload = () => renderBoxes();
 

@@ -3,136 +3,128 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tradutor de Manga</title>
+    <title>Tradutor de Mangá</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
-          <p class="eyebrow">MVP Local</p>
-          <h1>Tradutor de Manga</h1>
-          <p class="muted">Use a pasta de entrada para os mangas originais, abra um capitulo e monte a traducao em PT-BR pagina por pagina.</p>
+          <p class="eyebrow">Local</p>
+          <h1>Tradutor de Mangá</h1>
         </div>
 
         <section class="panel">
           <div class="panel-header">
             <h2>Biblioteca</h2>
-            <button id="reload-library" class="ghost-button" type="button">Atualizar</button>
+            <button id="reload-library" class="ghost-button small" type="button">Atualizar</button>
           </div>
-          <div id="library-status" class="status">Lendo mangas...</div>
-          <div id="folder-info" class="folder-info"></div>
+          <div id="library-status" class="status">Lendo mangás...</div>
           <div id="library-list" class="library-list"></div>
+          <details class="details-panel">
+            <summary>Pastas</summary>
+            <div id="folder-info" class="folder-info"></div>
+          </details>
         </section>
       </aside>
 
       <main class="workspace">
         <header class="workspace-header">
-          <div>
-            <p class="eyebrow">Projeto</p>
-            <h2 id="chapter-title">Nenhum capitulo aberto</h2>
-            <p id="chapter-subtitle" class="muted small">Abra um capitulo para revisar as falas por pagina.</p>
+          <div class="header-title">
+            <h2 id="chapter-title">Nenhum capítulo aberto</h2>
+            <p id="chapter-subtitle" class="muted small">Escolha um capítulo na biblioteca.</p>
           </div>
           <div class="workspace-actions">
-            <button id="prev-page" class="icon-button" type="button" title="Pagina anterior">‹</button>
-            <button id="next-page" class="icon-button" type="button" title="Proxima pagina">›</button>
+            <span id="page-counter" class="pill">0 / 0</span>
+            <button id="prev-page" class="icon-button" type="button" title="Página anterior">‹</button>
+            <button id="next-page" class="icon-button" type="button" title="Próxima página">›</button>
             <button id="preprocess-chapter" class="ghost-button" type="button" title="Detectar + OCR + sugerir o capítulo todo">Pré-processar</button>
+            <button id="preview-page" class="ghost-button" type="button" title="Renderizar a página (inpaint + typeset)">Prévia</button>
             <button id="save-project" class="primary-button" type="button">Salvar</button>
-            <button id="export-chapter" class="primary-button" type="button" title="Inpaint + typeset + CBZ">Gerar capítulo</button>
-            <button id="preview-page" class="ghost-button" type="button" title="Ver a página traduzida (prévia)">Prévia</button>
+            <button id="export-chapter" class="primary-button" type="button" title="Inpaint + typeset + CBZ">Gerar CBZ</button>
           </div>
         </header>
 
-        <section class="viewer-grid">
-          <div class="viewer-panel">
-            <div id="page-meta" class="status">Selecione um capitulo na lateral.</div>
-            <div class="editor-hint muted small">Clique num balão e digite a tradução ali mesmo. As cores 🟢 🟡 🔴 mostram a confiança da detecção.</div>
+        <div class="toolbar">
+          <select id="ocr-engine" class="ghost-select" title="Idioma do OCR ao detectar">
+            <option value="tesseract">EN · Tesseract</option>
+            <option value="manga-ocr">JP · MangaOCR</option>
+            <option value="none">Só posicionar</option>
+          </select>
+          <button id="run-ocr" class="ghost-button" type="button">Detectar</button>
+          <button id="suggest-page" class="ghost-button" type="button">Sugerir</button>
+          <button id="apply-suggestions" class="ghost-button" type="button">Aplicar</button>
+          <button id="accept-confident" class="ghost-button" type="button" title="Aceitar sugestões com confiança ≥90% no capítulo">Aceitar ≥90%</button>
+          <button id="add-line" class="ghost-button" type="button">+ Caixa</button>
+          <button id="copy-originals" class="ghost-button" type="button">Copiar</button>
+          <span id="tool-status" class="status grow">Abra uma página para começar.</span>
+        </div>
+
+        <section class="dual-view">
+          <div class="page-pane">
+            <div class="pane-label">Original</div>
+            <div id="orig-stage" class="viewer-stage empty">
+              <div class="page-canvas">
+                <img id="page-image-original" alt="Página original">
+              </div>
+            </div>
+          </div>
+          <div class="page-pane">
+            <div class="pane-label">Tradução <span class="muted small">— clique num balão e digite</span></div>
             <div id="viewer-stage" class="viewer-stage empty">
-              <div id="page-canvas" class="page-canvas">
-                <img id="page-image" alt="Pagina do manga">
+              <div class="page-canvas">
+                <img id="page-image" alt="Página traduzida">
                 <div id="box-layer" class="box-layer"></div>
               </div>
             </div>
           </div>
+        </section>
 
-          <aside class="editor-panel">
-            <section class="panel">
-              <div class="panel-header">
-                <h2>Paginas</h2>
-                <span id="page-counter" class="pill">0 / 0</span>
-              </div>
-              <div id="page-source" class="status">Aguardando capitulo.</div>
-              <div id="page-list" class="page-list"></div>
-            </section>
+        <section class="bottom-strip">
+          <div class="strip-col pages-col">
+            <div class="strip-head">
+              <h3>Páginas</h3>
+              <span id="page-source" class="muted small">Aguardando capítulo.</span>
+            </div>
+            <div id="page-list" class="page-list horizontal"></div>
+          </div>
 
-            <section class="panel">
-              <div class="panel-header">
-                <h2>Falas</h2>
-                <span id="line-counter" class="pill">0</span>
-              </div>
+          <div class="strip-col falas-col">
+            <div class="strip-head">
+              <h3>Falas <span id="line-counter" class="pill">0</span></h3>
+              <button id="remove-box" class="ghost-button danger small" type="button" disabled>Remover</button>
+            </div>
+            <div id="page-meta" class="status">Selecione um capítulo.</div>
+            <div id="translation-list" class="translation-list"></div>
 
-              <div class="tool-row">
-                <select id="ocr-engine" class="ghost-select" title="Idioma do OCR ao detectar">
-                  <option value="tesseract">EN · Tesseract</option>
-                  <option value="manga-ocr">JP · MangaOCR</option>
-                  <option value="none">Só posicionar</option>
-                </select>
-                <button id="add-line" class="ghost-button" type="button">Adicionar</button>
-                <button id="run-ocr" class="ghost-button" type="button">Detectar</button>
-                <button id="suggest-page" class="ghost-button" type="button">Sugerir</button>
-                <button id="apply-suggestions" class="ghost-button" type="button">Aplicar</button>
-                <button id="accept-confident" class="ghost-button" type="button" title="Aceitar sugestões com confiança ≥90% no capítulo inteiro">Aceitar ≥90%</button>
-                <button id="copy-originals" class="ghost-button" type="button">Copiar</button>
-              </div>
-
-              <div id="tool-status" class="status">Abra uma pagina para comecar.</div>
-              <div id="translation-list" class="translation-list"></div>
-            </section>
-
-            <section class="panel">
-              <div class="panel-header">
-                <h2 id="review-title">Revisão</h2>
-                <button id="remove-box" class="ghost-button danger" type="button">Remover</button>
-              </div>
-
+            <details class="details-panel">
+              <summary id="review-title">Detalhes da fala</summary>
               <form id="box-form" class="box-form">
                 <label class="ref-field">
                   <span class="field-label">Original <span id="original-conf" class="conf-badge"></span></span>
                   <textarea id="original-text" rows="2" readonly placeholder="—"></textarea>
                 </label>
-
                 <div class="suggestion-row">
                   <span id="suggested-preview" class="muted small">Sem sugestão ainda.</span>
                   <button id="use-suggestion" class="ghost-button small" type="button" disabled>Usar</button>
                 </div>
-
                 <label class="final-field">
-                  <span class="field-label"><strong>Tradução final</strong> — ou digite direto no balão</span>
-                  <textarea id="translated-text" rows="4" placeholder="Digite a tradução em PT-BR"></textarea>
+                  <span class="field-label"><strong>Tradução final</strong> — ou digite no balão</span>
+                  <textarea id="translated-text" rows="3" placeholder="Digite a tradução em PT-BR"></textarea>
                 </label>
-
-                <details class="details-panel">
-                  <summary>Ajustes avançados</summary>
-                  <div class="option-grid">
-                    <label class="check-option">
-                      <input id="cover-original" type="checkbox" checked>
-                      Cobrir original
-                    </label>
-                    <label>
-                      Fonte
-                      <input id="font-size" type="number" min="8" max="72" step="1" value="18">
-                    </label>
-                  </div>
-                  <div class="coord-grid">
-                    <label>X (%)<input id="box-x" type="number" min="0" max="100" step="0.1"></label>
-                    <label>Y (%)<input id="box-y" type="number" min="0" max="100" step="0.1"></label>
-                    <label>Largura (%)<input id="box-width" type="number" min="1" max="100" step="0.1"></label>
-                    <label>Altura (%)<input id="box-height" type="number" min="1" max="100" step="0.1"></label>
-                  </div>
-                </details>
+                <div class="option-grid">
+                  <label class="check-option"><input id="cover-original" type="checkbox" checked> Cobrir original</label>
+                  <label>Fonte <input id="font-size" type="number" min="8" max="72" step="1" value="18"></label>
+                </div>
+                <div class="coord-grid">
+                  <label>X (%)<input id="box-x" type="number" min="0" max="100" step="0.1"></label>
+                  <label>Y (%)<input id="box-y" type="number" min="0" max="100" step="0.1"></label>
+                  <label>Larg (%)<input id="box-width" type="number" min="1" max="100" step="0.1"></label>
+                  <label>Alt (%)<input id="box-height" type="number" min="1" max="100" step="0.1"></label>
+                </div>
               </form>
-            </section>
-          </aside>
+            </details>
+          </div>
         </section>
       </main>
     </div>

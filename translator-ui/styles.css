@@ -1,13 +1,15 @@
 :root {
-  --bg: #eef2f5;
-  --panel: rgba(255, 255, 255, 0.92);
-  --panel-border: rgba(31, 42, 55, 0.12);
-  --ink: #17202a;
-  --muted: #657384;
-  --accent: #16736f;
-  --accent-strong: #0d5552;
-  --danger: #a33a3a;
-  --shadow: 0 18px 44px rgba(20, 34, 48, 0.12);
+  --bg: #0e1116;
+  --panel: #171b21;
+  --panel-border: rgba(255, 255, 255, 0.10);
+  --ink: #e7ebf0;
+  --muted: #98a2b3;
+  --accent: #2dd4bf;
+  --accent-strong: #14b8a6;
+  --danger: #f87171;
+  --shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+  --surface: rgba(255, 255, 255, 0.05);
+  --surface-2: rgba(255, 255, 255, 0.09);
   --radius-lg: 10px;
   --radius-md: 8px;
   --radius-sm: 6px;
@@ -22,7 +24,8 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: linear-gradient(180deg, #f7f9fb, var(--bg));
+  background: var(--bg);
+  color: var(--ink);
 }
 
 button,
@@ -615,4 +618,113 @@ textarea {
   padding: 1px 7px;
 }
 .conf-badge:empty { display: none; }
+
+/* ============ TEMA ESCURO: overrides das superfícies ============ */
+.sidebar { background: #12161c; }
+.status { background: var(--surface); color: var(--muted); }
+.ghost-button { background: var(--surface-2); color: var(--ink); }
+.ghost-button:hover { background: rgba(255, 255, 255, 0.16); transform: none; }
+.icon-button { background: var(--surface-2); color: var(--ink); }
+.folder-chip { background: var(--surface); color: var(--muted); }
+.pill { background: var(--surface-2); color: var(--muted); }
+.manga-card,
+.chapter-button,
+.page-button,
+.line-item { background: var(--surface); border-color: var(--panel-border); color: var(--ink); }
+.chapter-button.active,
+.page-button.active,
+.line-item.selected { background: rgba(45, 212, 191, 0.16); border-color: rgba(45, 212, 191, 0.5); }
+.chapter-badge { background: var(--surface-2); color: var(--muted); }
+.chapter-badge.ready { background: rgba(45, 212, 191, 0.18); color: #6ee7d7; }
+.chapter-badge.pending { background: rgba(245, 158, 11, 0.18); color: #fbbf24; }
+.box-form textarea,
+.box-form input { background: var(--surface); color: var(--ink); border-color: var(--panel-border); }
+.ghost-select { background: var(--surface-2); color: var(--ink); border-color: var(--panel-border); }
+.ref-field textarea[readonly] { background: rgba(255, 255, 255, 0.03); color: var(--muted); }
+.suggestion-row { background: var(--surface); }
+.details-panel summary { color: var(--ink); }
+
+/* ============ LAYOUT: toolbar + dual-view + faixa inferior ============ */
+.workspace-header { padding: 14px 18px; }
+.header-title h2 { font-size: 1.1rem; }
+.workspace-actions { flex-wrap: wrap; justify-content: flex-end; }
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-lg);
+  padding: 10px 12px;
+}
+.toolbar .ghost-button,
+.toolbar .ghost-select { padding: 7px 12px; font-size: 0.85rem; }
+.status.grow { flex: 1; min-width: 160px; background: transparent; padding: 4px 0; }
+
+.dual-view {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  min-height: 0;
+}
+.page-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.pane-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.page-pane .viewer-stage {
+  min-height: 480px;
+  max-height: 74vh;
+  padding: 10px;
+  background: #0a0d11;
+  border: 1px solid var(--panel-border);
+}
+
+/* imagem original espelha o comportamento de exibição da traduzida */
+#page-image-original {
+  display: none;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+}
+.viewer-stage.ready #page-image-original { display: block; }
+
+.bottom-strip {
+  display: grid;
+  grid-template-columns: 1fr 1.25fr;
+  gap: 14px;
+}
+.strip-col {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.strip-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.strip-head h3 { margin: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
+.page-list.horizontal {
+  flex-direction: row;
+  flex-wrap: wrap;
+  max-height: 116px;
+}
+.page-list.horizontal .page-button { width: auto; padding: 6px 10px; }
+
+@media (max-width: 1100px) {
+  .dual-view,
+  .bottom-strip { grid-template-columns: 1fr; }
+}
 
