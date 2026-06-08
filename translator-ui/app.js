@@ -3,6 +3,7 @@ import { state, elements, clamp } from "./state.js";
 import {
   renderCurrentPage,
   renderTranslationList,
+  applyZoom,
   addBox,
   getCurrentPageRecord,
   getSelectedBox,
@@ -26,6 +27,10 @@ function wireEvents() {
   elements.exportChapter.addEventListener("click", () => exportChapter().catch((error) => setStatus(error.message)));
   elements.preprocessChapter.addEventListener("click", () => preprocessChapter().catch((error) => setToolStatus(error.message)));
   elements.previewPage.addEventListener("click", () => previewPage().catch((error) => setToolStatus(error.message)));
+  elements.zoomIn.addEventListener("click", () => { state.zoom = Math.min(3, (state.zoom || 1) + 0.25); applyZoom(); });
+  elements.zoomOut.addEventListener("click", () => { state.zoom = Math.max(0.5, (state.zoom || 1) - 0.25); applyZoom(); });
+  elements.zoomFit.addEventListener("click", () => { state.zoom = 1; applyZoom(); });
+  window.addEventListener("resize", () => applyZoom());
   elements.prevPage.addEventListener("click", () => {
     if (!state.pages.length) return;
     state.currentPageIndex = Math.max(0, state.currentPageIndex - 1);

@@ -628,6 +628,29 @@ textarea {
 .folder-chip { background: var(--surface); color: var(--muted); }
 .pill { background: var(--surface-2); color: var(--muted); }
 .autosave { font-style: italic; opacity: 0.85; min-width: 64px; text-align: right; }
+
+/* ===== Layout de altura fixa (a janela NAO rola) + zoom ===== */
+html, body { height: 100%; }
+body { height: 100vh; overflow: hidden; }
+.app-shell { height: 100vh; overflow: hidden; }
+.sidebar { overflow-y: auto; }
+.workspace { height: 100vh; overflow: hidden; gap: 12px; padding: 14px; }
+.dual-view { flex: 1; min-height: 0; }
+.page-pane { min-height: 0; }
+.page-pane .viewer-stage {
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;            /* scroll interno apenas quando dá zoom */
+  align-items: center;
+}
+.bottom-strip { max-height: 36vh; }
+.strip-col { overflow: auto; }
+/* o JS define a altura da imagem conforme o zoom; aqui so exibe */
+.viewer-stage.ready #page-image,
+.viewer-stage.ready #page-image-original { display: block; }
+.zoom-controls { display: inline-flex; align-items: center; gap: 6px; }
+.zoom-controls #zoom-label { min-width: 42px; text-align: center; }
 .manga-card,
 .chapter-button,
 .page-button,

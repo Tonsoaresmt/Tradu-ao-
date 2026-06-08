@@ -10,7 +10,8 @@ export const state = {
   selectedBoxId: null,
   drag: null,
   draw: null,
-  previewing: false
+  previewing: false,
+  zoom: 1
 };
 
 export const elements = {
@@ -35,6 +36,10 @@ export const elements = {
   preprocessChapter: document.querySelector("#preprocess-chapter"),
   previewPage: document.querySelector("#preview-page"),
   ocrEngine: document.querySelector("#ocr-engine"),
+  zoomIn: document.querySelector("#zoom-in"),
+  zoomOut: document.querySelector("#zoom-out"),
+  zoomFit: document.querySelector("#zoom-fit"),
+  zoomLabel: document.querySelector("#zoom-label"),
   prevPage: document.querySelector("#prev-page"),
   nextPage: document.querySelector("#next-page"),
   addLine: document.querySelector("#add-line"),

@@ -1052,24 +1052,42 @@ async function translateWithOllama(text, context = {}) {
   const examplesText = examples
     .map((example) => `EN: ${example.originalText}\nPT-BR: ${example.translatedText}`)
     .join("\n\n");
+  const systemPrompt = [
+    "Você é um tradutor profissional de mangás.",
+    "Traduza para português brasileiro natural.",
+    "",
+    "Regras:",
+    "- Preserve nomes próprios.",
+    "- Preserve termos do glossário.",
+    "- Preserve ataques e técnicas.",
+    "- Use português brasileiro natural.",
+    "- Adapte expressões quando necessário.",
+    "- Mantenha o tom emocional.",
+    "- Não explique nada.",
+    "- Não adicione comentários.",
+    "- A tradução deve caber em um balão.",
+    "- Prefira frases curtas.",
+    "- Preserve humor, ironia e sarcasmo.",
+    "",
+    "Responda apenas com a tradução final."
+  ].join("\n");
+
   const prompt = [
-    "Traduza a fala de manga abaixo para portugues brasileiro natural.",
-    "Use o contexto da cena quando existir.",
-    "Preserve nomes proprios e nao explique nada.",
-    style ? `Estilo desejado:\n${style}` : "",
-    glossaryText ? `Glossario fixo:\n${glossaryText}` : "",
-    examplesText ? `Exemplos aprovados pelo revisor:\n${examplesText}` : "",
-    nearby ? `Contexto da pagina:\n${nearby}` : "",
-    `Fala em ingles:\n${text}`,
-    "Traducao PT-BR:"
+    style ? `Estilo da scan:\n${style}` : "",
+    glossaryText ? `Glossário (use sempre):\n${glossaryText}` : "",
+    examplesText ? `Exemplos já aprovados (siga o estilo):\n${examplesText}` : "",
+    nearby ? `Falas próximas (contexto da cena):\n${nearby}` : "",
+    `Fala para traduzir:\n${text}`,
+    "Tradução:"
   ].filter(Boolean).join("\n\n");
 
   const response = await fetch(`${OLLAMA_URL}/api/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(60000),
     body: JSON.stringify({
       model,
+      system: systemPrompt,
       prompt,
       stream: false,
       options: {

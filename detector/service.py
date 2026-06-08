@@ -207,9 +207,16 @@ def find_font():
     return None  # PIL cai na fonte default
 
 
-def soft_wrap(text, font, max_width):
-    """Quebra por palavras inteiras (nao corta palavra)."""
-    words = str(text).split()
+# ===== Lettering profissional: quebra balanceada, ocupacao alvo, fonte minima =====
+TARGET_FILL = 0.72       # ocupacao alvo do balao (deixa margem confortavel: 0.65-0.80)
+MIN_FONT_BASE = 14       # fonte minima legivel (px); cresce com a resolucao
+
+
+def _line_spacing(size):
+    return max(2, int(size * 0.16))
+
+
+def _greedy_wrap(words, font, max_width):
     lines, current = [], ""
     for word in words:
         test = (current + " " + word).strip()
@@ -221,6 +228,30 @@ def soft_wrap(text, font, max_width):
     if current:
         lines.append(current)
     return lines
+
+
+def balanced_wrap(text, font, max_width):
+    """Quebra em linhas de larguras parecidas (estetica de scan), sem cortar palavra.
+    Acha a menor largura-alvo que ainda usa o mesmo numero de linhas do greedy."""
+    words = str(text).split()
+    if not words:
+        return []
+    base = _greedy_wrap(words, font, max_width)
+    if len(base) <= 1:
+        return base
+    n = len(base)
+    lo = max(font.getbbox(w)[2] for w in words)  # nao menor que a maior palavra
+    hi = int(max_width)
+    best = base
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        cand = _greedy_wrap(words, font, mid)
+        if len(cand) <= n:
+            best = cand
+            hi = mid - 1
+        else:
+            lo = mid + 1
+    return best
 
 
 def _max_line_width(lines, font):
@@ -241,27 +272,35 @@ def _hard_break(lines, font, max_width):
     return out
 
 
-def fit_text(draw, text, font_path, box_w, box_h, max_size=48):
-    """Encolhe a fonte ate o texto (palavras inteiras) caber no balao;
-    so corta palavra como ultimo recurso (fonte minima)."""
+def fit_text(draw, text, font_path, box_w, box_h, min_size=MIN_FONT_BASE, max_size=64):
+    """Maior fonte (>= min_size) cujo texto BALANCEADO cabe na area util do balao,
+    deixando margem confortavel (TARGET_FILL). No piso, gera mais linhas / hifeniza
+    em vez de reduzir a fonte indefinidamente. Retorna (font, wrapped, tw, th, spacing)."""
     from PIL import ImageFont
-    size = max(8, min(int(box_h * 0.95), max_size))
-    while size >= 8:
+    margin = (1 - TARGET_FILL ** 0.5) / 2   # margem por lado p/ ocupar ~72% da area
+    avail_w = max(8, box_w * (1 - 2 * margin))
+    avail_h = max(8, box_h * (1 - 2 * margin))
+
+    size = max(min_size, min(int(box_h * 0.85), max_size))
+    while size >= min_size:
         font = ImageFont.truetype(font_path, size) if font_path else ImageFont.load_default()
-        lines = soft_wrap(text, font, box_w)
+        spacing = _line_spacing(size)
+        lines = balanced_wrap(text, font, avail_w)
         wrapped = "\n".join(lines)
-        bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, align="center", spacing=2)
+        bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, align="center", spacing=spacing)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-        if _max_line_width(lines, font) <= box_w and th <= box_h:
-            return font, wrapped, tw, th
+        if _max_line_width(lines, font) <= avail_w and th <= avail_h:
+            return font, wrapped, tw, th, spacing
         if not font_path:
             break
         size -= 1
-    font = ImageFont.truetype(font_path, 8) if font_path else ImageFont.load_default()
-    lines = _hard_break(soft_wrap(text, font, box_w), font, box_w)
+
+    font = ImageFont.truetype(font_path, min_size) if font_path else ImageFont.load_default()
+    spacing = _line_spacing(min_size)
+    lines = _hard_break(balanced_wrap(text, font, avail_w), font, avail_w)
     wrapped = "\n".join(lines)
-    bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, align="center", spacing=2)
-    return font, wrapped, bbox[2] - bbox[0], bbox[3] - bbox[1]
+    bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, align="center", spacing=spacing)
+    return font, wrapped, bbox[2] - bbox[0], bbox[3] - bbox[1], spacing
 
 
 def bubble_inner_rect(crop_bgr):
@@ -336,22 +375,26 @@ def render_image(image_path, boxes, font_path):
         inner = bubble_inner_rect(img[y1:y2, x1:x2]) if box.get("coverOriginal") is not False else None
         if inner:
             ix, iy, iw, ih = inner
-            m = max(2, int(min(iw, ih) * 0.08))
-            bx1, by1 = x1 + ix + m, y1 + iy + m
-            bw, bh = iw - 2 * m, ih - 2 * m
+            bx1, by1 = x1 + ix, y1 + iy
+            bw, bh = iw, ih
         else:
-            inset_x = int((x2 - x1) * 0.14)
-            inset_y = int((y2 - y1) * 0.14)
+            inset_x = int((x2 - x1) * 0.05)
+            inset_y = int((y2 - y1) * 0.05)
             bx1, by1 = x1 + inset_x, y1 + inset_y
             bw, bh = (x2 - x1) - 2 * inset_x, (y2 - y1) - 2 * inset_y
         if bw < 8 or bh < 8:
             continue
-        font, wrapped, tw, th = fit_text(draw, text, font_path, bw, bh, max_size=max(28, int(H * 0.05)))
+        min_font = max(MIN_FONT_BASE, int(H * 0.016))
+        font, wrapped, tw, th, spacing = fit_text(
+            draw, text, font_path, bw, bh,
+            min_size=min_font, max_size=max(34, int(H * 0.06))
+        )
+        # centraliza o bloco de texto na area util do balao (centro visual)
         tx = bx1 + (bw - tw) / 2
         ty = by1 + (bh - th) / 2
-        sw = max(1, getattr(font, "size", 12) // 18)
+        sw = max(1, getattr(font, "size", 14) // 16)
         draw.multiline_text((tx, ty), wrapped, font=font, fill="black",
-                            align="center", spacing=2, stroke_width=sw, stroke_fill="white")
+                            align="center", spacing=spacing, stroke_width=sw, stroke_fill="white")
         rendered += 1
 
     return out, rendered

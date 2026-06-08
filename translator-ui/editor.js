@@ -281,9 +281,10 @@ export function renderCurrentPage() {
     stage.classList.remove("empty");
     stage.classList.add("ready");
   }
+  elements.pageImageOriginal.onload = () => applyZoom();
   elements.pageImageOriginal.src = page.url;
+  elements.pageImage.onload = () => { applyZoom(); renderBoxes(); };
   elements.pageImage.src = page.url;
-  elements.pageImage.onload = () => renderBoxes();
 
   normalizeBoxes();
   renderTranslationList();
@@ -303,15 +304,28 @@ export function toolSummary() {
   return `${ocr}. Sugestao: ${provider}.`;
 }
 
+export function applyZoom() {
+  const z = state.zoom || 1;
+  const stage = elements.viewerStage;
+  if (!stage) return;
+  const h = Math.max(120, stage.clientHeight - 16);
+  for (const img of [elements.pageImage, elements.pageImageOriginal]) {
+    if (!img || !img.getAttribute("src")) continue;
+    img.style.maxWidth = "none";
+    img.style.maxHeight = "none";
+    img.style.width = "auto";
+    img.style.height = `${Math.round(h * z)}px`;
+  }
+  if (elements.zoomLabel) elements.zoomLabel.textContent = `${Math.round(z * 100)}%`;
+}
+
 export function selectBox(id) {
   state.selectedBoxId = id;
-  // Atualiza a seleção sem recriar os balões (preserva o foco/cursor do campo inline).
+  // Atualiza a seleção sem recriar os balões nem MOVER a página (sem scrollIntoView).
   for (const node of elements.boxLayer.children) {
     node.classList.toggle("selected", node.dataset.id === id);
   }
   renderTranslationList();
-  const activeItem = elements.translationList.querySelector(".line-item.selected");
-  if (activeItem) activeItem.scrollIntoView({ block: "nearest" });
   syncBoxForm();
 }
 
