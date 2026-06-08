@@ -141,6 +141,38 @@ def ocr_crop(engine, pil_image):
     return ""
 
 
+def classify_box(crop_bgr, text=""):
+    """Tipo automatico CONSERVADOR. O modelo detecta BALOES DE FALA, entao o padrao
+    e 'fala'; so vira 'grito' quando o contorno do balao e claramente ESPETADO
+    (balao explosivo) — sinal confiavel, independe do fundo. narracao/SFX ficam
+    manuais (forma nao distingue de fala quando o fundo do painel e claro)."""
+    import cv2
+    import numpy as np
+    try:
+        h, w = crop_bgr.shape[:2]
+        if h < 16 or w < 16:
+            return "fala"
+        gray = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2GRAY)
+        _, bright = cv2.threshold(gray, 188, 255, cv2.THRESH_BINARY)
+        # fecha so os buracos do texto (kernel pequeno) pra preservar a forma do contorno
+        mask = cv2.morphologyEx(bright, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+        cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not cnts:
+            return "fala"
+        c = max(cnts, key=cv2.contourArea)
+        area = cv2.contourArea(c)
+        if area < 0.3 * h * w:
+            return "fala"
+        hull = cv2.convexHull(c)
+        ha = cv2.contourArea(hull)
+        solidity = area / ha if ha > 0 else 1.0
+        if solidity < 0.78:   # contorno bem espetado -> grito (balao explosivo)
+            return "grito"
+        return "fala"
+    except Exception:
+        return "fala"
+
+
 def detect(image_path, engine=None):
     from PIL import Image
 
@@ -163,21 +195,25 @@ def detect(image_path, engine=None):
             x1, y1, x2, y2 = float(x1), float(y1), float(x2), float(y2)
             crop = image.crop((int(x1), int(y1), int(x2), int(y2)))
             text = ocr_crop(engine, crop)
-            # Aperta a caixa retornada na AREA BRANCA do balao (encaixa melhor).
+            # Aperta a caixa na AREA BRANCA do balao + classifica o tipo (forma).
             bx1, by1, bx2, by2 = x1, y1, x2, y2
+            btype = "fala"
             try:
                 import numpy as np
                 import cv2
-                inner = bubble_inner_rect(cv2.cvtColor(np.array(crop), cv2.COLOR_RGB2BGR))
+                crop_bgr = cv2.cvtColor(np.array(crop), cv2.COLOR_RGB2BGR)
+                inner = bubble_inner_rect(crop_bgr)
                 if inner:
                     ix, iy, iw, ih = inner
                     bx1, by1 = x1 + ix, y1 + iy
                     bx2, by2 = x1 + ix + iw, y1 + iy + ih
+                btype = classify_box(crop_bgr, text)
             except Exception:
                 pass
             lines.append({
                 "originalText": text,
                 "confidence": round(conf * 100),
+                "type": btype,
                 "x": max(0.0, min(1.0, bx1 / W)),
                 "y": max(0.0, min(1.0, by1 / H)),
                 "width": max(0.02, min(1.0, (bx2 - bx1) / W)),

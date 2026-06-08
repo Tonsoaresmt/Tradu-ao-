@@ -1238,6 +1238,7 @@ async function preprocessChapter(job, { suggest, engine }) {
         suggestedText: "",
         translatedText: "",
         coverOriginal: true,
+        type: line.type || "fala",
         fontSize: 18,
         x: line.x,
         y: line.y,
