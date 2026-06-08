@@ -199,8 +199,14 @@ RENDER_FONT = os.environ.get("RENDER_FONT", "")
 def find_font():
     if RENDER_FONT and os.path.exists(RENDER_FONT):
         return RENDER_FONT
+    # Fonte de lettering de manga empacotada (estilo scanlation) tem prioridade.
+    here = os.path.dirname(os.path.abspath(__file__))
+    for name in ("anime_ace.ttf", "anime_ace_3.ttf", "comic_shanns_2.ttf"):
+        cand = os.path.join(here, "fonts", name)
+        if os.path.exists(cand):
+            return cand
     win_fonts = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts")
-    for name in ("arialbd.ttf", "comicbd.ttf", "ariblk.ttf", "arial.ttf"):
+    for name in ("comicbd.ttf", "arialbd.ttf", "ariblk.ttf", "arial.ttf"):
         cand = os.path.join(win_fonts, name)
         if os.path.exists(cand):
             return cand
