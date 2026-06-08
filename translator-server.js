@@ -1072,8 +1072,11 @@ async function translateWithOllama(text, context = {}) {
     .map((example) => `EN: ${example.originalText}\nPT-BR: ${example.translatedText}`)
     .join("\n\n");
   const systemPrompt = [
-    "Você é um tradutor profissional de mangás.",
-    "Traduza para português brasileiro natural.",
+    "Você é um tradutor profissional de mangás e também corretor de OCR.",
+    "",
+    "A fala vem de OCR automático e PODE ter erros de leitura (ex.: VOU->YOU,",
+    "70->TO, 0->O, l/I trocados, rn->m). Conserte mentalmente os erros ÓBVIOS",
+    "de OCR usando o sentido da frase e o contexto, e traduza o texto corrigido.",
     "",
     "Regras:",
     "- Preserve nomes próprios.",
@@ -1153,12 +1156,16 @@ async function translateBatchWithOllama(texts, context = {}) {
     .join("\n\n");
 
   const systemPrompt = [
-    "Você é um tradutor profissional de mangás.",
-    "Traduza para português brasileiro natural.",
+    "Você é um tradutor profissional de mangás e também corretor de OCR.",
     "",
-    "Regras:",
-    "- Preserve nomes próprios, termos do glossário, ataques e técnicas.",
+    "As falas vêm de OCR automático e PODEM ter erros de leitura, por exemplo:",
+    "VOU->YOU, 70->TO, 0->O, l/I trocados, rn->m, pontuação errada, MAIÚSCULA/minúscula.",
+    "ANTES de traduzir, conserte mentalmente os erros ÓBVIOS de OCR, usando o sentido",
+    "da frase e o contexto das falas vizinhas. Depois traduza o texto JÁ corrigido.",
+    "",
+    "Regras da tradução:",
     "- Português brasileiro natural; adapte expressões; mantenha o tom, humor, ironia.",
+    "- Preserve nomes próprios, termos do glossário, ataques e técnicas.",
     "- Não explique nada nem adicione comentários.",
     "- Cada tradução deve caber em um balão; prefira frases curtas.",
     "",
