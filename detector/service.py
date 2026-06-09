@@ -661,10 +661,13 @@ def render_image(image_path, boxes, font_path, typeset=True):
         ax1, ay1, aw, ah = it["area"]
         max_font = it["max_font"]; fill = it["fill"]; stroke_div = it["stroke_div"]
 
-        # ALVO de fonte: o tamanho do ORIGINAL (medido) tem prioridade — replica o
-        # que o letrista escolheu. Sem medida, cai no tamanho uniforme da pagina.
+        # ALVO de fonte: 1) tamanho MANUAL (fontLocked, o humano mandou) tem
+        # prioridade; 2) tamanho do ORIGINAL medido; 3) uniforme da pagina.
+        manual = box.get("fontLocked") and box.get("fontSize")
         target = it.get("orig_font")
-        if target:
+        if manual:
+            cap = max(min_font, min(int(box.get("fontSize") or 18), int(H * 0.2)))
+        elif target:
             cap = max(min_font, min(int(target), int(H * 0.14)))
         elif uniform and is_bubble:
             cap = min(max_font, uniform)

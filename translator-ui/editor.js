@@ -53,14 +53,24 @@ function autoSizeInput(input, node) {
   input.style.height = `${Math.max(8, h)}px`;
 }
 
+// Escala da imagem exibida vs original (pra fonte manual acompanhar o zoom).
+function fontScale() {
+  const nat = elements.pageImage.naturalWidth || elements.pageImage.clientWidth || 1;
+  return (elements.pageImage.clientWidth || nat) / nat;
+}
+
 // Recalcula a fonte de cada balão pelo tamanho REAL renderizado do nó
-// (clientWidth/Height) — funciona em qualquer zoom, sem depender de recalcular
-// a partir da imagem (que sob zoom pode divergir do balão).
+// (clientWidth/Height) — funciona em qualquer zoom. Se o balão tem fonte MANUAL
+// (fontLocked), usa o tamanho escolhido (escalado pelo zoom) em vez do auto-ajuste.
 function refitBoxFonts() {
   for (const node of elements.boxLayer.children) {
     const input = node.querySelector(".box-input");
     if (!input) continue;
-    input.style.fontSize = `${fitBoxFont(input.value || input.placeholder, node.clientWidth, node.clientHeight)}px`;
+    if (node.dataset.fontLocked === "1") {
+      input.style.fontSize = `${Math.max(6, Math.round(Number(node.dataset.fontSize || 18) * fontScale()))}px`;
+    } else {
+      input.style.fontSize = `${fitBoxFont(input.value || input.placeholder, node.clientWidth, node.clientHeight)}px`;
+    }
     autoSizeInput(input, node);
   }
 }
@@ -275,6 +285,8 @@ export function renderBoxes() {
     node.className = "translation-box";
     node.classList.add(`type-${(box.type || "fala")}`);
     node.dataset.id = box.id;
+    node.dataset.fontLocked = box.fontLocked ? "1" : "";
+    node.dataset.fontSize = box.fontSize || 18;
     if (box.id === state.selectedBoxId) node.classList.add("selected");
 
     node.style.left = `${box.x * 100}%`;
@@ -311,7 +323,9 @@ export function renderBoxes() {
     input.className = "box-input";
     input.value = box.translatedText || "";
     input.placeholder = box.suggestedText || box.originalText || "traduzir...";
-    input.style.fontSize = `${fitBoxFont(input.value || input.placeholder, box.width * imgW, box.height * imgH)}px`;
+    input.style.fontSize = box.fontLocked
+      ? `${Math.max(6, Math.round((box.fontSize || 18) * fontScale()))}px`
+      : `${fitBoxFont(input.value || input.placeholder, box.width * imgW, box.height * imgH)}px`;
     input.addEventListener("pointerdown", (event) => event.stopPropagation());
     input.addEventListener("focus", () => {
       if (state.selectedBoxId !== box.id) selectBox(box.id);

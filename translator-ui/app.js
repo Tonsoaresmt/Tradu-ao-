@@ -161,7 +161,9 @@ function wireEvents() {
   });
   elements.boxType.addEventListener("change", () => updateSelectedBox({ type: elements.boxType.value }));
   elements.coverOriginal.addEventListener("change", () => updateSelectedBox({ coverOriginal: elements.coverOriginal.checked }));
-  elements.fontSize.addEventListener("input", () => updateSelectedBox({ fontSize: Number(elements.fontSize.value) || 18 }));
+  elements.fontSize.addEventListener("input", () => updateSelectedBox({ fontSize: Number(elements.fontSize.value) || 18, fontLocked: true }));
+  // Botao "Centralizar": re-renderiza os baloes (re-aplica centralizacao/encaixe).
+  elements.centerBoxes?.addEventListener("click", () => { renderCurrentPage(); setToolStatus("Balões re-centralizados nesta página."); });
 
   elements.boxX.addEventListener("input", () => {
     const box = getSelectedBox();
