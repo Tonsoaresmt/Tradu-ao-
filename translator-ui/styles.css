@@ -370,6 +370,7 @@ textarea {
   background: transparent;
   resize: none;
   text-align: center;
+  text-transform: uppercase;   /* combina com o lettering do render (CAIXA ALTA) */
   font-weight: 700;
   line-height: 1.15;
   color: #111;

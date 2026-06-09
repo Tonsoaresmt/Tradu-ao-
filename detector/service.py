@@ -586,6 +586,11 @@ def render_image(image_path, boxes, font_path, typeset=True):
     draw = ImageDraw.Draw(out)
     rendered = 0
     issues = []
+    K_ELLIPSE = 0.93                 # ocupacao do balao (texto mais cheio, como o original)
+    min_font = max(MIN_FONT_BASE, int(H * 0.016))
+
+    # --- Precomputa area + parametros de cada caixa com texto (uma vez) ---
+    items = []
     for box in boxes:
         text = str(box.get("translatedText", "")).strip()
         if not text:
@@ -595,8 +600,6 @@ def render_image(image_path, boxes, font_path, typeset=True):
         is_sfx = btype == "sfx"
         is_bubble = btype in ("fala", "pensamento")
         x1, y1, x2, y2 = px(box)
-
-        # Area base do balao: area branca real (ou a caixa toda como fallback).
         if is_sfx:
             ax1, ay1, aw, ah = x1, y1, (x2 - x1), (y2 - y1)
         else:
@@ -608,7 +611,6 @@ def render_image(image_path, boxes, font_path, typeset=True):
                 ax1, ay1, aw, ah = x1, y1, (x2 - x1), (y2 - y1)
         if aw < 8 or ah < 8:
             continue
-
         if btype == "grito":
             max_font, stroke_div, fill = max(44, int(H * 0.085)), 7, 0.9
         elif is_sfx:
@@ -617,20 +619,46 @@ def render_image(image_path, boxes, font_path, typeset=True):
             max_font, stroke_div, fill = max(30, int(H * 0.05)), 18, 0.92
         else:  # fala / pensamento
             max_font, stroke_div, fill = max(34, int(H * 0.06)), 16, 0.92
-        min_font = max(MIN_FONT_BASE, int(H * 0.016))
+        items.append({
+            "box": box, "text": text, "btype": btype, "is_sfx": is_sfx, "is_bubble": is_bubble,
+            "area": (ax1, ay1, aw, ah), "max_font": max_font, "fill": fill, "stroke_div": stroke_div,
+        })
 
-        # 1a opcao p/ BALAO: encaixe ELIPTICO (formato oval, padrao profissional).
+    # --- Pass 1: TAMANHO UNIFORME dos baloes de fala da pagina (estetica scan) ---
+    # Cada balao "comporta" uma fonte; usamos um alvo comum (percentil ~35) pra
+    # todos ficarem no MESMO tamanho, sem o balao gigante puxar tudo pra cima.
+    sizes = []
+    for it in items:
+        if not it["is_bubble"]:
+            continue
+        ax1, ay1, aw, ah = it["area"]
+        r = fit_text_ellipse(draw, it["text"], font_path, aw, ah,
+                             min_size=min_font, max_size=it["max_font"], k=K_ELLIPSE)
+        it["_ell"] = r
+        if r:
+            sizes.append(getattr(r[0], "size", 0))
+    uniform = None
+    if len([s for s in sizes if s]) >= 2:
+        ss = sorted(s for s in sizes if s)
+        uniform = ss[int(len(ss) * 0.35)]
+
+    # --- Pass 2: desenha (baloes no tamanho uniforme; resto no seu encaixe) ---
+    for it in items:
+        box = it["box"]; text = it["text"]; btype = it["btype"]
+        is_sfx = it["is_sfx"]; is_bubble = it["is_bubble"]
+        ax1, ay1, aw, ah = it["area"]
+        max_font = it["max_font"]; fill = it["fill"]; stroke_div = it["stroke_div"]
+
         method = "rect"
         res = None
         if is_bubble:
+            cap = min(max_font, uniform) if uniform else max_font
             res = fit_text_ellipse(draw, text, font_path, aw, ah,
-                                   min_size=min_font, max_size=max_font, k=0.9)
+                                   min_size=min_font, max_size=cap, k=K_ELLIPSE)
             if res:
                 method = "ellipse"
                 fx1, fy1, fw, fh = ax1, ay1, aw, ah
         if not res:
-            # Caixa retangular (narracao/grito/sfx) ou fallback do balao: recuo
-            # de seguranca + encaixe retangular balanceado.
             mfrac = 0.0 if is_sfx else (0.12 if is_bubble else 0.07)
             mx, my = int(aw * mfrac), int(ah * mfrac)
             fx1, fy1, fw, fh = ax1 + mx, ay1 + my, aw - 2 * mx, ah - 2 * my
@@ -648,16 +676,18 @@ def render_image(image_path, boxes, font_path, typeset=True):
                             align="center", spacing=spacing, stroke_width=sw, stroke_fill="white")
         rendered += 1
 
-        # ---- QC: confere se ficou no padrao (dentro do balao, ocupacao ok) ----
+        # ---- QC: confere se ficou no padrao (REVISOR FINAL geometrico) ----
         problems = []
         if tw > fw + 2 or th > fh + 2:
             problems.append("texto transborda o balao")
         if getattr(font, "size", 99) <= min_font and (tw > fw * 0.97 or th > fh * 0.97):
-            problems.append("nao coube nem na fonte minima (texto longo demais)")
-        if (th / float(ah) if ah else 0) < 0.20:
+            problems.append("nao coube nem na fonte minima (encurte a traducao)")
+        if (th / float(ah) if ah else 0) < 0.18:
             problems.append("texto pequeno demais para o balao")
+        if uniform and is_bubble and getattr(font, "size", 0) < uniform * 0.7:
+            problems.append("fonte destoa das outras (muito menor) — revise o balao")
         if is_bubble and method == "rect":
-            problems.append("nao encaixou no formato oval (caiu no retangular)")
+            problems.append("nao encaixou no formato oval")
         if problems:
             issues.append({"box": box.get("order") or rendered, "type": btype, "problems": problems})
 
