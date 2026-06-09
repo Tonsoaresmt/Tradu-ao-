@@ -140,15 +140,22 @@ async function detectorHealth(timeoutMs = 1500) {
 
 function spawnDetector() {
   const detectorUrl = new URL(DETECTOR_URL);
+  // DETECTOR_GPU=0 => detector roda na CPU (CUDA_VISIBLE_DEVICES vazio). Util numa
+  // GPU pequena (8GB) quando se usa um LLM grande (9b): libera a GPU toda pro
+  // Ollama. A deteccao fica um pouco mais lenta, mas o LLM (o gargalo) fica rapido.
+  const detectorEnv = {
+    ...process.env,
+    DETECTOR_PORT: detectorUrl.port || "5000",
+    DETECTOR_HOST: detectorUrl.hostname,
+    OCR_ENGINE: DETECTOR_OCR,
+    OCR_LANG
+  };
+  if (process.env.DETECTOR_GPU === "0") {
+    detectorEnv.CUDA_VISIBLE_DEVICES = "-1";   // "-1" esconde a GPU do torch ("" nao funciona no Windows)
+  }
   detectorChild = spawn(DETECTOR_PYTHON, [DETECTOR_SCRIPT], {
     cwd: DETECTOR_DIR,
-    env: {
-      ...process.env,
-      DETECTOR_PORT: detectorUrl.port || "5000",
-      DETECTOR_HOST: detectorUrl.hostname,
-      OCR_ENGINE: DETECTOR_OCR,
-      OCR_LANG
-    },
+    env: detectorEnv,
     stdio: ["ignore", "inherit", "inherit"]
   });
   detectorChild.on("exit", (code) => {
