@@ -11,6 +11,49 @@ import {
   setToolStatus
 } from "./editor.js";
 
+// === Fundo limpo do editor (inpaint: ingles removido, rosto/arte preservados) ===
+// O editor passa a mostrar a pagina JA com o inpaint, em vez da original. Assim a
+// caixa de fala NAO precisa tapar nada (fica transparente) -> nao cobre o rosto.
+const _cleanBgCache = new Map();   // pageName -> dataUrl
+
+export function invalidateCleanBg(pageName) {
+  if (pageName) _cleanBgCache.delete(pageName);
+  else _cleanBgCache.clear();
+}
+
+export async function loadCleanBackground() {
+  if (state.previewing) return;               // a Previa controla a imagem
+  const page = getCurrentPage();
+  if (!page || !state.selectedManga) return;
+  const boxes = state.project.pages?.[page.name]?.boxes || [];
+  if (!boxes.length) return;                  // sem baloes ainda -> mantem original
+  const key = page.name;
+
+  const apply = (dataUrl) => {
+    if (getCurrentPage()?.name === key && !state.previewing && dataUrl) {
+      elements.pageImage.src = dataUrl;       // troca o fundo da aba Traducao
+    }
+  };
+
+  if (_cleanBgCache.has(key)) { apply(_cleanBgCache.get(key)); return; }
+
+  try {
+    const data = await api("/api/preview-page", {
+      method: "POST",
+      body: JSON.stringify({
+        manga: state.selectedManga,
+        chapter: state.selectedChapter,
+        page: page.name,
+        typeset: false,                       // so inpaint
+        boxes: boxes.map((b) => ({ x: b.x, y: b.y, width: b.width, height: b.height, type: b.type, coverOriginal: b.coverOriginal }))
+      })
+    });
+    if (data?.dataUrl) { _cleanBgCache.set(key, data.dataUrl); apply(data.dataUrl); }
+  } catch {
+    /* se falhar, mantem a original */
+  }
+}
+
 export async function runOcr() {
   const page = getCurrentPage();
   if (!page) return;
@@ -263,7 +306,9 @@ export async function autoOrganize() {
   getCurrentPageRecord().boxes = newBoxes;
   state.selectedBoxId = newBoxes[0]?.id || null;
   normalizeBoxes();
+  invalidateCleanBg(page.name);   // baloes mudaram -> refaz o fundo limpo
   renderCurrentPage();
+  loadCleanBackground();
   const kept = newBoxes.filter((box) => box.translatedText || box.suggestedText).length;
   setToolStatus(`Auto organizado: ${newBoxes.length} balao(oes) reposicionado(s), ${kept} traducao(oes) preservada(s).`);
 }

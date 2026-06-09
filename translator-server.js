@@ -1799,12 +1799,15 @@ const server = http.createServer(async (req, res) => {
       const result = await renderOne({
         imagePath,
         boxes,
+        typeset: body.typeset !== false,   // false = so inpaint (fundo do editor)
         font: process.env.RENDER_FONT || undefined
       });
       sendJson(res, 200, {
         ok: true,
         dataUrl: result.dataUrl,
-        boxesRendered: result.boxesRendered
+        boxesRendered: result.boxesRendered,
+        qcOk: result.qcOk !== false,
+        qcIssues: result.qcIssues || []
       });
       return;
     }

@@ -272,12 +272,12 @@ export function renderBoxes() {
     node.style.top = `${box.y * 100}%`;
     node.style.width = `${box.width * 100}%`;
     node.style.height = `${box.height * 100}%`;
-    // Caixa OPACA quando cobre o original: no editor, tapa o texto inglês de
-    // baixo (o editor desenha por cima da página ORIGINAL; o inpaint de verdade
-    // é no render/Prévia). SFX/sem-cobrir ficam translúcidos.
+    // Caixa TRANSPARENTE: o fundo da aba Tradução já vem com o inpaint (inglês
+    // removido, rosto/arte preservados), então a caixa NÃO tapa nada — só a
+    // borda + o texto editável. (SFX continua translúcido alaranjado.)
     node.style.background = box.coverOriginal === false
-      ? "rgba(248, 252, 252, 0.34)"
-      : "rgba(255, 255, 255, 1)";
+      ? "rgba(248, 252, 252, 0.20)"
+      : "transparent";
 
     // Alça numerada (cor = confiança): clique seleciona, arraste move.
     const handle = document.createElement("div");

@@ -507,7 +507,7 @@ def bubble_inner_rect(crop_bgr):
     return cv2.boundingRect(c)
 
 
-def render_image(image_path, boxes, font_path):
+def render_image(image_path, boxes, font_path, typeset=True):
     import numpy as np
     import cv2
     from PIL import Image, ImageDraw
@@ -529,7 +529,9 @@ def render_image(image_path, boxes, font_path):
     full_mask = np.zeros(img.shape[:2], dtype=np.uint8)
     has_mask = False
     for box in boxes:
-        if not str(box.get("translatedText", "")).strip():
+        # No typeset, so limpa balao ja traduzido; no modo fundo-do-editor
+        # (typeset=False) limpa TODO balao detectado (tira o ingles de uma vez).
+        if typeset and not str(box.get("translatedText", "")).strip():
             continue
         if box.get("coverOriginal") is False:
             continue
@@ -577,6 +579,10 @@ def render_image(image_path, boxes, font_path):
 
     # 2) typeset da traducao
     out = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    if not typeset:
+        # Modo "fundo do editor": so o inpaint (ingles removido, arte/rosto
+        # preservados) — o texto editavel e desenhado por cima pela UI.
+        return out, 0, []
     draw = ImageDraw.Draw(out)
     rendered = 0
     issues = []
@@ -665,9 +671,9 @@ def render_page(image_path, boxes, out_path, font_path):
     return rendered, issues
 
 
-def render_png_bytes(image_path, boxes, font_path):
+def render_png_bytes(image_path, boxes, font_path, typeset=True):
     import io
-    out, rendered, issues = render_image(image_path, boxes, font_path)
+    out, rendered, issues = render_image(image_path, boxes, font_path, typeset=typeset)
     buf = io.BytesIO()
     out.save(buf, "PNG")
     return buf.getvalue(), rendered, issues
@@ -798,7 +804,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(400, {"error": f"imagem nao encontrada: {image_path}"})
                 return
             import base64
-            png, rendered, issues = render_png_bytes(image_path, body.get("boxes", []), body.get("font") or find_font())
+            typeset = body.get("typeset", True)
+            png, rendered, issues = render_png_bytes(image_path, body.get("boxes", []), body.get("font") or find_font(), typeset=typeset)
             self._send(200, {
                 "ok": True,
                 "boxesRendered": rendered,

@@ -19,7 +19,7 @@ import {
   setToolStatus
 } from "./editor.js";
 import { loadLibrary, saveProject, refreshSystemStatus } from "./library.js";
-import { runOcr, suggestPage, applySuggestions, acceptConfident, copyOriginals, autoOrganize, autoTranslatePage } from "./translator.js";
+import { runOcr, suggestPage, applySuggestions, acceptConfident, copyOriginals, autoOrganize, autoTranslatePage, loadCleanBackground } from "./translator.js";
 import { previewPage } from "./preview.js";
 import { exportChapter, preprocessChapter } from "./export.js";
 import { initAutosave } from "./autosave.js";
@@ -104,10 +104,13 @@ function wireEvents() {
       autoBusy = false;
       // O detector ja subiu aqui -> atualiza a barra de status (EasyOCR·GPU etc.).
       if (!statusSynced) statusSynced = await refreshSystemStatus();
+      loadCleanBackground();   // troca o fundo da aba Traducao pelo inpaint (sem ingles, rosto preservado)
       maybeAutoTranslate(); // pega a página atual (pode ter mudado)
     }
   }
   window.addEventListener("page-shown", maybeAutoTranslate);
+  // Paginas que JA tem baloes (salvas): carrega o fundo limpo ao exibir.
+  window.addEventListener("page-shown", () => loadCleanBackground());
   elements.copyOriginals.addEventListener("click", () => copyOriginals().catch((error) => setToolStatus(error.message)));
   elements.removeBox.addEventListener("click", () => {
     const pageRecord = getCurrentPageRecord();
