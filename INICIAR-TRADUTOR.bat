@@ -20,8 +20,10 @@ REM   google = sempre Google: mais rapido, porem mais literal/robotico.
 REM   ollama = forca so a IA local (sem fallback).
 set "TRANSLATOR_PROVIDER=auto"
 REM O modelo do Ollama e detectado sozinho (usa o que voce tiver instalado).
-REM Para fixar um modelo especifico, descomente e ajuste:
-REM set "OLLAMA_TRANSLATOR_MODEL=qwen3.5:4b"
+REM Para fixar um modelo especifico (ex.: um MAIOR p/ mais qualidade), descomente:
+REM set "OLLAMA_TRANSLATOR_MODEL=qwen3.5:8b"
+REM Contexto do Ollama (tokens). Maior = cabe mais glossario/exemplos/personagens.
+REM set "OLLAMA_NUM_CTX=32768"
 REM Para priorizar VELOCIDADE em vez de qualidade, troque a 1a linha por:
 REM set "TRANSLATOR_PROVIDER=google"
 

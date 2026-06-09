@@ -23,6 +23,7 @@ tradutor-manga/traduzidos/*.png
 tradutor-manga/em-traducao/projetos/
 tradutor-manga/treino/exemplos.jsonl
 tradutor-manga/treino/glossario.json
+tradutor-manga/treino/personagens.json
 tradutor-manga/treino/estilo.txt
 
 # Backups de reset locais

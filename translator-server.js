@@ -22,6 +22,7 @@ const PROJECTS_DIR = path.join(IN_PROGRESS_DIR, "projetos");
 const TRAINING_DIR = path.join(TRANSLATOR_ROOT_DIR, "treino");
 const TRAINING_EXAMPLES_PATH = path.join(TRAINING_DIR, "exemplos.jsonl");
 const TRAINING_GLOSSARY_PATH = path.join(TRAINING_DIR, "glossario.json");
+const TRAINING_CHARACTERS_PATH = path.join(TRAINING_DIR, "personagens.json");
 const TRAINING_STYLE_PATH = path.join(TRAINING_DIR, "estilo.txt");
 const PUBLIC_DIR = path.join(__dirname, "translator-ui");
 const WINDOWS_OCR_SCRIPT = path.join(__dirname, "tools", "windows-ocr.ps1");
@@ -33,6 +34,9 @@ const OPENAI_MODEL = process.env.OPENAI_TRANSLATOR_MODEL || "gpt-4.1-mini";
 const LIBRETRANSLATE_URL = process.env.LIBRETRANSLATE_URL || "";
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_TRANSLATOR_MODEL || "";
+// Janela de contexto do Ollama (tokens). Everton subiu p/ 32k; aproveita p/
+// caber pagina + glossario + exemplos + perfis de personagem na mesma chamada.
+const OLLAMA_NUM_CTX = Number(process.env.OLLAMA_NUM_CTX || 8192);
 // Provedor de traducao selecionavel por config (etapa plugavel): auto = cadeia completa.
 const TRANSLATOR_PROVIDER = (process.env.TRANSLATOR_PROVIDER || "auto").toLowerCase();
 
@@ -405,6 +409,21 @@ async function ensureTranslatorDirs() {
     await fs.writeJson(TRAINING_GLOSSARY_PATH, {
       terms: [],
       porObra: {}
+    }, { spaces: 2 });
+  }
+
+  if (!await fs.pathExists(TRAINING_CHARACTERS_PATH)) {
+    // Perfis de VOZ por personagem (#3). Edite p/ cada personagem falar do seu
+    // jeito. "global" vale p/ tudo; "porObra" so na obra com aquele nome.
+    await fs.writeJson(TRAINING_CHARACTERS_PATH, {
+      global: {},
+      porObra: {
+        "Chainsaw Man": {
+          "Denji": "simplório e impulsivo; gírias, frases curtas, fala do que sente sem filtro",
+          "Power": "arrogante e infantil; se gaba, fala alto, exagera, debochada",
+          "Makima": "calma, educada e ameaçadora; fala controlada, frases polidas porém frias"
+        }
+      }
     }, { spaces: 2 });
   }
 }
@@ -922,6 +941,27 @@ async function glossaryForManga(manga) {
   return [...terms, ...own];
 }
 
+// Perfis de VOZ por personagem (#3): { "Power": "arrogante...", ... }. Global +
+// da obra atual. O modelo aplica quando reconhece quem fala (pelo nome/contexto).
+async function charactersForManga(manga) {
+  const data = await fs.readJson(TRAINING_CHARACTERS_PATH).catch(() => ({ global: {}, porObra: {} }));
+  const out = {};
+  const merge = (obj) => {
+    if (obj && typeof obj === "object") {
+      for (const [name, voice] of Object.entries(obj)) {
+        if (name && voice) out[name] = voice;
+      }
+    }
+  };
+  merge(data.global);
+  if (data.porObra && typeof data.porObra === "object") {
+    for (const [key, profiles] of Object.entries(data.porObra)) {
+      if (memoryKey(key) === memoryKey(manga)) merge(profiles);
+    }
+  }
+  return out;
+}
+
 function scoreExample(example, text, context = {}) {
   const words = new Set(memoryKey(text).split(/\s+/).filter((word) => word.length > 2));
   const exampleWords = new Set(memoryKey(example.originalText).split(/\s+/).filter((word) => word.length > 2));
@@ -1106,6 +1146,7 @@ async function translateWithOllama(text, context = {}) {
 
   const style = await loadTrainingStyle();
   const glossary = await glossaryForManga(context.manga);
+  const characters = await charactersForManga(context.manga);
   const examples = await findRelevantTrainingExamples(text, context);
   const nearby = Array.isArray(context.nearbyLines)
     ? context.nearbyLines.filter(Boolean).join("\n")
@@ -1113,6 +1154,9 @@ async function translateWithOllama(text, context = {}) {
   const glossaryText = glossary
     .filter((item) => item?.source && item?.target)
     .map((item) => `${item.source} => ${item.target}${item.note ? ` (${item.note})` : ""}`)
+    .join("\n");
+  const charactersText = Object.entries(characters)
+    .map(([name, voice]) => `${name}: ${voice}`)
     .join("\n");
   const examplesText = examples
     .map((example) => `EN: ${example.originalText}\nPT-BR: ${example.translatedText}`)
@@ -1138,6 +1182,7 @@ async function translateWithOllama(text, context = {}) {
   const prompt = [
     style ? `Estilo da scan:\n${style}` : "",
     glossaryText ? `Glossário (use sempre):\n${glossaryText}` : "",
+    charactersText ? `Vozes dos personagens (use quando reconhecer quem fala):\n${charactersText}` : "",
     examplesText ? `Exemplos já aprovados (siga o estilo):\n${examplesText}` : "",
     nearby ? `Falas próximas (contexto da cena):\n${nearby}` : "",
     `Fala para traduzir:\n${text}`,
@@ -1155,7 +1200,8 @@ async function translateWithOllama(text, context = {}) {
       stream: false,
       think: false,
       options: {
-        temperature: 0.2
+        temperature: 0.2,
+        num_ctx: OLLAMA_NUM_CTX
       }
     })
   });
@@ -1183,6 +1229,7 @@ async function translateBatchWithOllama(texts, context = {}) {
 
   const style = await loadTrainingStyle();
   const glossary = await glossaryForManga(context.manga);
+  const characters = await charactersForManga(context.manga);
   const joined = idxs.map((i) => cleaned[i]).join("\n");
   const examples = await findRelevantTrainingExamples(joined, context);
   const nearby = Array.isArray(context.nearbyLines)
@@ -1191,6 +1238,9 @@ async function translateBatchWithOllama(texts, context = {}) {
   const glossaryText = glossary
     .filter((item) => item?.source && item?.target)
     .map((item) => `${item.source} => ${item.target}${item.note ? ` (${item.note})` : ""}`)
+    .join("\n");
+  const charactersText = Object.entries(characters)
+    .map(([name, voice]) => `${name}: ${voice}`)
     .join("\n");
   const examplesText = examples
     .map((example) => `EN: ${example.originalText}\nPT-BR: ${example.translatedText}`)
@@ -1224,6 +1274,7 @@ async function translateBatchWithOllama(texts, context = {}) {
   const prompt = [
     style ? `Estilo da scan:\n${style}` : "",
     glossaryText ? `Glossário (use sempre):\n${glossaryText}` : "",
+    charactersText ? `Vozes dos personagens (use quando reconhecer quem fala):\n${charactersText}` : "",
     examplesText ? `Exemplos já aprovados (siga o estilo):\n${examplesText}` : "",
     nearby ? `Falas próximas (contexto da cena):\n${nearby}` : "",
     `Falas para traduzir:\n${numbered}`,
@@ -1240,7 +1291,7 @@ async function translateBatchWithOllama(texts, context = {}) {
       prompt,
       stream: false,
       think: false,
-      options: { temperature: 0.2 }
+      options: { temperature: 0.2, num_ctx: OLLAMA_NUM_CTX }
     })
   });
 
