@@ -157,12 +157,21 @@ def _prep_for_tesseract(pil_image):
     return Image.fromarray(th)
 
 
+def _clean_ocr_text(text):
+    """Limpeza comum do texto de OCR (qualquer engine)."""
+    import re
+    text = re.sub(r"[|\\_~{}\[\]<>]", "", text)        # ruído comum de OCR
+    text = " ".join(text.split()).strip()
+    # EasyOCR/Tesseract leem o "." final como ":" -> normaliza
+    # (balão de fala praticamente nunca termina em ":")
+    text = re.sub(r"\s*:+\s*$", ".", text)
+    return text
+
+
 def _tesseract_text(pil_image, psm):
     import pytesseract
-    import re
     text = pytesseract.image_to_string(pil_image, lang=OCR_LANG, config=f"--oem 1 --psm {psm}")
-    text = re.sub(r"[|\\_~{}\[\]<>]", "", text)   # ruído comum de OCR
-    return " ".join(text.split()).strip()
+    return _clean_ocr_text(text)
 
 
 def ocr_crop(engine, pil_image):
@@ -184,9 +193,7 @@ def ocr_crop(engine, pil_image):
             results = ocr.readtext(arr, detail=1, paragraph=False)
             results.sort(key=lambda r: (r[0][0][1], r[0][0][0]))  # ordem de leitura: cima->baixo
             parts = [t for (_b, t, conf) in results if conf >= 0.3]
-            import re
-            text = re.sub(r"[|\\_~{}\[\]<>]", "", " ".join(parts))
-            return " ".join(text.split()).strip()
+            return _clean_ocr_text(" ".join(parts))
         if engine == "tesseract":
             prepped = _prep_for_tesseract(pil_image)
             cands = [_tesseract_text(prepped, 6)]    # PSM 6: bloco uniforme (bom p/ balão)
@@ -329,8 +336,9 @@ def find_font():
 
 
 # ===== Lettering profissional: quebra balanceada, ocupacao alvo, fonte minima =====
-TARGET_FILL = 0.72       # ocupacao alvo do balao (deixa margem confortavel: 0.65-0.80)
+TARGET_FILL = 0.72       # ocupacao alvo (fallback; render_image passa 'fill' por tipo)
 MIN_FONT_BASE = 14       # fonte minima legivel (px); cresce com a resolucao
+ABS_MIN_FONT = 10        # piso ABSOLUTO: encolhe ate aqui p/ NAO quebrar palavra curta
 
 
 def _line_spacing(size):
@@ -379,14 +387,24 @@ def _max_line_width(lines, font):
     return max((font.getbbox(line)[2] for line in lines), default=0)
 
 
+def _has_orphan(lines):
+    """True se ha linha 'orfa' (<3 chars) no meio de varias — feio ('O'/'SIGNIFICADO')."""
+    real = [l.strip() for l in lines if l.strip()]
+    return len(real) > 1 and any(len(l) < 3 for l in real)
+
+
 def _hard_break(lines, font, max_width):
-    """Ultimo recurso: corta palavras gigantes, com hifen."""
+    """Ultimo recurso: corta SO palavra LONGA (>10), com hifen, sem deixar pedaco
+    <3 chars. Palavra curta que nao cabe fica inteira (vaza um pouco — bem menos
+    feio que 'APLAUS-/E'); o que evita isso de verdade e encolher ate ABS_MIN_FONT."""
     out = []
     for line in lines:
-        while font.getbbox(line + "-")[2] > max_width and len(line) > 2:
-            cut = len(line)
-            while cut > 2 and font.getbbox(line[:cut] + "-")[2] > max_width:
+        while font.getbbox(line + "-")[2] > max_width and len(line) > 10:
+            cut = len(line) - 1
+            while cut > 3 and font.getbbox(line[:cut] + "-")[2] > max_width:
                 cut -= 1
+            if cut < 3 or (len(line) - cut) < 3:   # nao cria orfa de 1-2 chars
+                break
             out.append(line[:cut] + "-")
             line = line[cut:]
         out.append(line)
@@ -402,8 +420,10 @@ def fit_text(draw, text, font_path, box_w, box_h, min_size=MIN_FONT_BASE, max_si
     avail_w = max(8, box_w * (1 - 2 * margin))
     avail_h = max(8, box_h * (1 - 2 * margin))
 
-    size = max(min_size, min(int(box_h * 0.85), max_size))
-    while size >= min_size:
+    floor = min(min_size, ABS_MIN_FONT)   # encolhe abaixo do "legivel" ANTES de quebrar
+    best_any = None
+    size = max(floor, min(int(box_h * 0.85), max_size))
+    while size >= floor:
         font = ImageFont.truetype(font_path, size) if font_path else ImageFont.load_default()
         spacing = _line_spacing(size)
         lines = balanced_wrap(text, font, avail_w)
@@ -411,13 +431,19 @@ def fit_text(draw, text, font_path, box_w, box_h, min_size=MIN_FONT_BASE, max_si
         bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, align="center", spacing=spacing)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         if _max_line_width(lines, font) <= avail_w and th <= avail_h:
-            return font, wrapped, tw, th, spacing
+            cand = (font, wrapped, tw, th, spacing)
+            if not _has_orphan(lines):
+                return cand                       # melhor: cabe intacto, sem orfa
+            if best_any is None and size >= min_size:
+                best_any = cand
         if not font_path:
             break
         size -= 1
+    if best_any:
+        return best_any
 
-    font = ImageFont.truetype(font_path, min_size) if font_path else ImageFont.load_default()
-    spacing = _line_spacing(min_size)
+    font = ImageFont.truetype(font_path, floor) if font_path else ImageFont.load_default()
+    spacing = _line_spacing(floor)
     lines = _hard_break(balanced_wrap(text, font, avail_w), font, avail_w)
     wrapped = "\n".join(lines)
     bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, align="center", spacing=spacing)
@@ -440,8 +466,10 @@ def fit_text_ellipse(draw, text, font_path, box_w, box_h,
     if a < 4 or b < 4:
         return None
 
-    size = max(min_size, min(int(box_h * 0.9), max_size))
-    while size >= min_size:
+    floor = min(min_size, ABS_MIN_FONT)
+    best_any = None
+    size = max(floor, min(int(box_h * 0.9), max_size))
+    while size >= floor:
         font = ImageFont.truetype(font_path, size) if font_path else ImageFont.load_default()
         spacing = _line_spacing(size)
         pitch = size + spacing
@@ -480,9 +508,13 @@ def fit_text_ellipse(draw, text, font_path, box_w, box_h,
             if ok and all(lines):   # usou exatamente as n linhas, todas cheias
                 wrapped = "\n".join(lines)
                 bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, align="center", spacing=spacing)
-                return font, wrapped, bbox[2] - bbox[0], bbox[3] - bbox[1], spacing
+                cand = (font, wrapped, bbox[2] - bbox[0], bbox[3] - bbox[1], spacing)
+                if not _has_orphan(lines):
+                    return cand                       # melhor caso: sem linha orfa
+                if best_any is None and size >= min_size:
+                    best_any = cand                   # orfa (ex.: 2 palavras) so ACIMA do piso
         size -= 1
-    return None
+    return best_any
 
 
 def bubble_inner_rect(crop_bgr):
@@ -597,7 +629,7 @@ def render_image(image_path, boxes, font_path, typeset=True):
     draw = ImageDraw.Draw(out)
     rendered = 0
     issues = []
-    K_ELLIPSE = 0.93                 # ocupacao do balao (texto mais cheio, como o original)
+    K_ELLIPSE = 0.91                 # ocupacao do balao (margem confortavel, nao encosta na borda)
     min_font = max(MIN_FONT_BASE, int(H * 0.016))
 
     # --- Precomputa area + parametros de cada caixa com texto (uma vez) ---
@@ -712,6 +744,8 @@ def render_image(image_path, boxes, font_path, typeset=True):
             problems.append("fonte destoa das outras (muito menor) — revise o balao")
         if is_bubble and method == "rect":
             problems.append("nao encaixou no formato oval")
+        if _has_orphan(wrapped.split("\n")):
+            problems.append("linha isolada muito curta (rebalancear/encurtar)")
         if problems:
             issues.append({"box": box.get("order") or rendered, "type": btype, "problems": problems})
 
