@@ -19,22 +19,23 @@ REM           unica chamada (rapido). << RECOMENDADO
 REM   google = sempre Google: mais rapido, porem mais literal/robotico.
 REM   ollama = forca so a IA local (sem fallback).
 set "TRANSLATOR_PROVIDER=auto"
-REM ===== Modelos: TRADUTOR (rapido) + REVISOR (inteligente) =====
-REM Tradutor = qwen3.5:4b: rapido, roda 100%% na GPU JUNTO com o detector. Faz a
-REM traducao automatica de todas as paginas (o grosso).
-set "OLLAMA_TRANSLATOR_MODEL=qwen3.5:4b"
-REM Revisor = qwen3.5:9b: mais inteligente, usado SO no botao "Revisar (9b)" (sob
-REM demanda). Ao revisar, o Ollama troca de modelo (carrega o 9b) -> demora, normal.
+REM ===== Modelo de traducao =====
+REM qwen3.5:9b = QUALIDADE (testado: acerta 'Voce esta no ar em cinco', 'casa
+REM cheia', 'passou pela sede'). O 4b e rapido mas ERRA muito ('vem a cha',
+REM 'full house') -> nao vale. Na sua GPU de 8GB nao tem rapido+bom local; o 9b
+REM e o caminho da qualidade. ~12-17s/pagina (aceitavel p/ revisar).
+set "OLLAMA_TRANSLATOR_MODEL=qwen3.5:9b"
 set "OLLAMA_REVIEWER_MODEL=qwen3.5:9b"
 REM Contexto (tokens). 8192 e suficiente p/ pagina+glossario+exemplos+personagens.
 set "OLLAMA_NUM_CTX=8192"
 
-REM ===== Detector na GPU (padrao) =====
-REM Com o tradutor 4b (leve), o detector cabe JUNTO na GPU = tudo rapido. Deixe
-REM assim. (So valeria DETECTOR_GPU=0 se voce trocasse o tradutor padrao pro 9b.)
-REM set "DETECTOR_GPU=0"
-REM Para priorizar VELOCIDADE (sem IA), troque a 1a linha por:
-REM set "TRANSLATOR_PROVIDER=google"
+REM ===== Detector na CPU (libera a GPU pro 9b) =====
+REM Como o 9b (6.6GB) e o detector nao cabem juntos nos 8GB, o detector roda na
+REM CPU e o 9b fica 100%% na GPU = traducao o mais rapido possivel.
+set "DETECTOR_GPU=0"
+REM Se um dia quiser VELOCIDADE em vez de qualidade (aceitando erros), troque o
+REM modelo acima por qwen3.5:4b e comente a linha DETECTOR_GPU (4b cabe na GPU).
+REM Para SEM IA (so Google, rapido/literal): set "TRANSLATOR_PROVIDER=google"
 
 REM ===== Encerra instancias ANTIGAS (servidor + detector) =====
 REM Sem isso, se um servidor velho continuar rodando, o navegador segue vendo o
