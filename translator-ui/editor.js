@@ -45,6 +45,14 @@ export function fitBoxFont(text, wPx, hPx) {
   return 8;
 }
 
+// Ajusta a altura da caixa de texto ao conteúdo pra o flex CENTRALIZAR vertical
+// (textarea sozinho alinha no topo). Mantém centralizado em qualquer zoom.
+function autoSizeInput(input, node) {
+  input.style.height = "auto";
+  const h = Math.min(node.clientHeight - 2, input.scrollHeight);
+  input.style.height = `${Math.max(8, h)}px`;
+}
+
 // Recalcula a fonte de cada balão pelo tamanho REAL renderizado do nó
 // (clientWidth/Height) — funciona em qualquer zoom, sem depender de recalcular
 // a partir da imagem (que sob zoom pode divergir do balão).
@@ -53,6 +61,7 @@ function refitBoxFonts() {
     const input = node.querySelector(".box-input");
     if (!input) continue;
     input.style.fontSize = `${fitBoxFont(input.value || input.placeholder, node.clientWidth, node.clientHeight)}px`;
+    autoSizeInput(input, node);
   }
 }
 
@@ -311,6 +320,7 @@ export function renderBoxes() {
       box.translatedText = input.value;
       if (elements.translatedText) elements.translatedText.value = input.value;
       input.style.fontSize = `${fitBoxFont(input.value || input.placeholder, node.clientWidth, node.clientHeight)}px`;
+      autoSizeInput(input, node);   // mantém centralizado ao digitar
       renderTranslationList();
     });
 
