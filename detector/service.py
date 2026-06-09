@@ -854,9 +854,17 @@ class Handler(BaseHTTPRequestHandler):
             if not image_path or not os.path.exists(image_path):
                 self._send(400, {"error": f"imagem nao encontrada: {image_path}"})
                 return
-            import base64
             typeset = body.get("typeset", True)
-            png, rendered, issues = render_png_bytes(image_path, body.get("boxes", []), body.get("font") or find_font(), typeset=typeset)
+            boxes = body.get("boxes", [])
+            font_path = body.get("font") or find_font()
+            # Modo "so QC": roda o render p/ obter o veredito SEM gerar/transmitir
+            # o PNG (rapido nas iteracoes do loop de auto-ajuste).
+            if body.get("qcOnly"):
+                _out, rendered, issues = render_image(image_path, boxes, font_path, typeset=typeset)
+                self._send(200, {"ok": True, "boxesRendered": rendered, "qcIssues": issues, "qcOk": len(issues) == 0})
+                return
+            import base64
+            png, rendered, issues = render_png_bytes(image_path, boxes, font_path, typeset=typeset)
             self._send(200, {
                 "ok": True,
                 "boxesRendered": rendered,

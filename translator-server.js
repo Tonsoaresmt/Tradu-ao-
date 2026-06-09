@@ -1440,6 +1440,75 @@ async function suggestTranslationsBatch(items, context = {}) {
   return out.map((o) => ({ id: o.id, originalText: o.originalText, ...o.result }));
 }
 
+// === Loop de QC fechado (#2): reprovou "nao coube" -> Ollama ENCURTA -> re-checa ===
+async function shortenWithOllama(text, context = {}) {
+  const model = await getOllamaModel();
+  if (!model || !String(text || "").trim()) return null;
+  const characters = await charactersForManga(context.manga);
+  const charactersText = Object.entries(characters).map(([n, v]) => `${n}: ${v}`).join("\n");
+  const system = [
+    "Você reescreve uma fala de mangá em PT-BR MAIS CURTA para caber num balão pequeno.",
+    "Mantenha EXATAMENTE o sentido, o tom e a naturalidade; corte palavras supérfluas,",
+    "use contrações e sinônimos curtos. NÃO invente nem mude o sentido.",
+    charactersText ? `Vozes (mantenha): ${charactersText}` : "",
+    "Responda APENAS com a versão curta, sem aspas nem comentários."
+  ].filter(Boolean).join("\n");
+  const prompt = `Encurte (mais natural e curto, mesmo sentido):\n${text}\n\nVersão curta:`;
+  try {
+    const response = await fetch(`${OLLAMA_URL}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(30000),
+      body: JSON.stringify({ model, system, prompt, stream: false, think: false, options: { temperature: 0.3, num_ctx: OLLAMA_NUM_CTX } })
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    let out = cleanOcrText(stripThink(data.response || "")).replace(/^["'\s]+|["'\s]+$/g, "");
+    return out || null;
+  } catch {
+    return null;
+  }
+}
+
+// Renderiza (so QC) -> identifica baloes que "nao couberam" -> manda o Ollama
+// encurtar -> repete ate passar (ou maxIter). Muta os translatedText dos boxes.
+async function autoFitPage(imagePath, boxes, context = {}, maxIter = 2) {
+  const toPayload = () => boxes.map((b) => ({
+    x: b.x, y: b.y, width: b.width, height: b.height,
+    type: b.type || "fala", order: b.order,
+    translatedText: String(b.translatedText || "").trim(),
+    coverOriginal: b.coverOriginal !== false
+  }));
+  const FIXABLE = /não coube|nao coube|transborda/i;
+  let issues = [];
+  for (let iter = 0; iter <= maxIter; iter++) {
+    let r;
+    try {
+      r = await renderOne({ imagePath, boxes: toPayload(), typeset: true, qcOnly: true, font: process.env.RENDER_FONT || undefined });
+    } catch {
+      break;
+    }
+    issues = r.qcIssues || [];
+    if (iter === maxIter) break;
+    const tooLong = issues.filter((i) => (i.problems || []).some((p) => FIXABLE.test(p)));
+    if (!tooLong.length) break;
+
+    let changed = false;
+    for (const issue of tooLong) {
+      const box = boxes.find((b) => (b.order || 0) === issue.box);
+      const cur = box && String(box.translatedText || "").trim();
+      if (!cur) continue;
+      const shorter = await shortenWithOllama(cur, context);
+      if (shorter && shorter.length < cur.length && shorter.toLowerCase() !== cur.toLowerCase()) {
+        box.translatedText = shorter;
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return { boxes, issues };
+}
+
 // === Fila de pre-processamento por capitulo =========================
 // Roda detect + OCR + sugestao em TODAS as paginas como job em background;
 // salva o projeto pre-preenchido pro humano so revisar. Nao sobrescreve
@@ -1862,6 +1931,35 @@ const server = http.createServer(async (req, res) => {
         boxesRendered: result.boxesRendered,
         qcOk: result.qcOk !== false,
         qcIssues: result.qcIssues || []
+      });
+      return;
+    }
+
+    // Loop de QC fechado: encurta automaticamente as falas que nao couberam.
+    if (req.method === "POST" && url.pathname === "/api/autofit-page") {
+      const body = await readJsonBody(req);
+      const manga = String(body.manga || "").trim();
+      const chapter = String(body.chapter || "").trim();
+      const page = String(body.page || "").trim();
+      const boxes = Array.isArray(body.boxes) ? body.boxes : [];
+
+      if (!manga || !chapter || !page) {
+        sendError(res, 400, "Manga, capitulo e pagina sao obrigatorios");
+        return;
+      }
+      const health = await ensureDetector().catch(() => null);
+      if (!health) {
+        sendError(res, 503, "Renderizador indisponivel.");
+        return;
+      }
+      const imagePath = await getPageImagePath(manga, chapter, page);
+      const work = boxes.map((b) => ({ ...b }));
+      const { boxes: fitted, issues } = await autoFitPage(imagePath, work, { manga, chapter, page });
+      sendJson(res, 200, {
+        ok: true,
+        boxes: fitted.map((b) => ({ id: b.id, translatedText: b.translatedText })),
+        qcOk: (issues || []).length === 0,
+        qcIssues: issues || []
       });
       return;
     }

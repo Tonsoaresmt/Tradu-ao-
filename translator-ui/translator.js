@@ -247,7 +247,39 @@ export async function autoTranslatePage(page) {
 
   if (onThisPage()) renderCurrentPage();
   status(`✓ Página traduzida com ${motor}: ${record.boxes.length} fala(s). Revise o que precisar.`);
+  autoFitCurrentPage(page, record);   // background: encurta o que nao coube
   return true;
+}
+
+// Loop de QC fechado (lado do cliente): manda a pagina pro /api/autofit-page,
+// que renderiza, vê quais falas NÃO couberam e pede pro Ollama ENCURTAR — repete
+// até passar. Roda em background pra não atrasar a exibição da tradução.
+export async function autoFitCurrentPage(page, record) {
+  if (!record?.boxes?.length || !state.selectedManga) return;
+  try {
+    const fit = await api("/api/autofit-page", {
+      method: "POST",
+      body: JSON.stringify({
+        manga: state.selectedManga,
+        chapter: state.selectedChapter,
+        page: page.name,
+        boxes: record.boxes.map((b) => ({
+          id: b.id, x: b.x, y: b.y, width: b.width, height: b.height,
+          type: b.type, order: b.order, translatedText: b.translatedText, coverOriginal: b.coverOriginal
+        }))
+      })
+    });
+    if (!fit?.boxes) return;
+    const fitById = new Map(fit.boxes.map((f) => [f.id, f.translatedText]));
+    let changed = false;
+    for (const b of record.boxes) {
+      const nv = fitById.get(b.id);
+      if (nv != null && nv !== b.translatedText) { b.translatedText = nv; changed = true; }
+    }
+    if (changed && getCurrentPage()?.name === page.name) renderCurrentPage();
+  } catch {
+    /* best-effort */
+  }
 }
 
 function bestOverlap(box, oldBoxes) {
