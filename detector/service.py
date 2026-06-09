@@ -562,9 +562,11 @@ def render_image(image_path, boxes, font_path):
         text_mask = np.zeros_like(mask)
         for i in range(1, n):
             cx, cy, cw, ch, area = stats[i]
-            touches = (cx <= 0 or cy <= 0 or cx + cw >= mw or cy + ch >= mh)
-            too_big = (cw > mw * 0.55 or ch > mh * 0.55 or area > 0.22 * mw * mh)
-            if touches or too_big:
+            # So preserva BLOBS GRANDES (arte/silhueta de personagem invadindo o
+            # balao). Letras sao pequenas e SEMPRE limpas — mesmo perto da borda
+            # (senao sobra texto ingles no fundo). Nao usar "encosta na borda".
+            too_big = (cw > mw * 0.62 or ch > mh * 0.62 or area > 0.16 * mw * mh)
+            if too_big:
                 continue
             text_mask[labels == i] = 255
         mask = cv2.dilate(text_mask, np.ones((3, 3), np.uint8), iterations=2)
