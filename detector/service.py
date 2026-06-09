@@ -528,6 +528,7 @@ def render_image(image_path, boxes, font_path, typeset=True):
     # anel que delimita a fala e a diferencia do cenario/narracao).
     full_mask = np.zeros(img.shape[:2], dtype=np.uint8)
     has_mask = False
+    orig_font = {}   # id(box) -> tamanho de fonte medido do texto ORIGINAL (px)
     for box in boxes:
         # No typeset, so limpa balao ja traduzido; no modo fundo-do-editor
         # (typeset=False) limpa TODO balao detectado (tira o ingles de uma vez).
@@ -562,6 +563,7 @@ def render_image(image_path, boxes, font_path, typeset=True):
         mh, mw = mask.shape
         n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
         text_mask = np.zeros_like(mask)
+        letter_h = []
         for i in range(1, n):
             cx, cy, cw, ch, area = stats[i]
             # So preserva BLOBS GRANDES (arte/silhueta de personagem invadindo o
@@ -571,6 +573,15 @@ def render_image(image_path, boxes, font_path, typeset=True):
             if too_big:
                 continue
             text_mask[labels == i] = 255
+            if ch >= 4 and ch < mh * 0.5:        # altura de letra plausivel
+                letter_h.append(ch)
+        # Tamanho de fonte do ORIGINAL: mediana da altura das letras / ~0.70
+        # (altura da maiuscula ~ 70% do corpo da fonte). Serve de ALVO p/ a
+        # traducao casar com o tamanho que o letrista original usou.
+        if letter_h:
+            letter_h.sort()
+            cap = letter_h[len(letter_h) // 2]
+            orig_font[id(box)] = max(MIN_FONT_BASE, int(round(cap / 0.70)))
         mask = cv2.dilate(text_mask, np.ones((3, 3), np.uint8), iterations=2)
         full_mask[ry1:ry2, rx1:rx2] = mask
         has_mask = True
@@ -622,6 +633,7 @@ def render_image(image_path, boxes, font_path, typeset=True):
         items.append({
             "box": box, "text": text, "btype": btype, "is_sfx": is_sfx, "is_bubble": is_bubble,
             "area": (ax1, ay1, aw, ah), "max_font": max_font, "fill": fill, "stroke_div": stroke_div,
+            "orig_font": orig_font.get(id(box)),   # tamanho medido do texto original
         })
 
     # --- Pass 1: TAMANHO UNIFORME dos baloes de fala da pagina (estetica scan) ---
@@ -649,10 +661,19 @@ def render_image(image_path, boxes, font_path, typeset=True):
         ax1, ay1, aw, ah = it["area"]
         max_font = it["max_font"]; fill = it["fill"]; stroke_div = it["stroke_div"]
 
+        # ALVO de fonte: o tamanho do ORIGINAL (medido) tem prioridade — replica o
+        # que o letrista escolheu. Sem medida, cai no tamanho uniforme da pagina.
+        target = it.get("orig_font")
+        if target:
+            cap = max(min_font, min(int(target), int(H * 0.14)))
+        elif uniform and is_bubble:
+            cap = min(max_font, uniform)
+        else:
+            cap = max_font
+
         method = "rect"
         res = None
         if is_bubble:
-            cap = min(max_font, uniform) if uniform else max_font
             res = fit_text_ellipse(draw, text, font_path, aw, ah,
                                    min_size=min_font, max_size=cap, k=K_ELLIPSE)
             if res:
@@ -663,7 +684,7 @@ def render_image(image_path, boxes, font_path, typeset=True):
             mx, my = int(aw * mfrac), int(ah * mfrac)
             fx1, fy1, fw, fh = ax1 + mx, ay1 + my, aw - 2 * mx, ah - 2 * my
             res = fit_text(draw, text, font_path, fw, fh,
-                           min_size=min_font, max_size=max_font, fill=fill)
+                           min_size=min_font, max_size=cap, fill=fill)
 
         font, wrapped, tw, th, spacing = res
         # centraliza o bloco na area (centro visual do balao)
