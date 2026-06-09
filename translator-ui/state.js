@@ -54,6 +54,7 @@ export const elements = {
   autoOrganize: document.querySelector("#auto-organize"),
   centerBoxes: document.querySelector("#center-boxes"),
   reviewPage: document.querySelector("#review-page"),
+  retranslatePage: document.querySelector("#retranslate-page"),
   readingMode: document.querySelector("#reading-mode"),
   toggleAdvanced: document.querySelector("#toggle-advanced"),
   toolStatus: document.querySelector("#tool-status"),

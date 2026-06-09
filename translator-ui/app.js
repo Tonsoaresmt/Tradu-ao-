@@ -19,7 +19,7 @@ import {
   setToolStatus
 } from "./editor.js";
 import { loadLibrary, saveProject, refreshSystemStatus } from "./library.js";
-import { runOcr, suggestPage, applySuggestions, acceptConfident, copyOriginals, autoOrganize, autoTranslatePage, loadCleanBackground, reviewPage } from "./translator.js";
+import { runOcr, suggestPage, applySuggestions, acceptConfident, copyOriginals, autoOrganize, autoTranslatePage, loadCleanBackground, reviewPage, retranslatePage } from "./translator.js";
 import { previewPage } from "./preview.js";
 import { exportChapter, preprocessChapter } from "./export.js";
 import { initAutosave } from "./autosave.js";
@@ -70,6 +70,7 @@ function wireEvents() {
   elements.acceptConfident.addEventListener("click", () => acceptConfident(90));
   elements.autoOrganize.addEventListener("click", () => autoOrganize().catch((error) => setToolStatus(error.message)));
   elements.reviewPage?.addEventListener("click", () => reviewPage().catch((error) => setToolStatus(error.message)));
+  elements.retranslatePage?.addEventListener("click", () => retranslatePage().catch((error) => setToolStatus(error.message)));
   elements.readingMode.addEventListener("click", toggleReading);
   elements.toggleAdvanced.addEventListener("click", () => {
     state.advanced = !state.advanced;

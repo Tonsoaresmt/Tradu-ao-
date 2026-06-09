@@ -322,6 +322,28 @@ export async function reviewPage() {
   setToolStatus(`✓ Revisor (${data.model || "9b"}): ${changed} de ${toReview.length} fala(s) ajustada(s).`);
 }
 
+// Botao "Re-traduzir do zero": apaga os baloes desta pagina e detecta+traduz de
+// novo (pra ver o efeito de mudancas sem zerar a obra toda). Substitui edicoes.
+export async function retranslatePage() {
+  const page = getCurrentPage();
+  const record = getCurrentPageRecord();
+  if (!page || !record) {
+    setToolStatus("Abra uma página antes.");
+    return;
+  }
+  if ((record.boxes || []).length &&
+      !window.confirm("Re-traduzir esta página do zero? As traduções/edições DESTA página serão substituídas.")) {
+    return;
+  }
+  record.boxes = [];
+  state.selectedBoxId = null;
+  invalidateCleanBg(page.name);
+  renderCurrentPage();
+  setToolStatus("Re-traduzindo esta página do zero...");
+  await autoTranslatePage(page);   // re-detecta + traduz limpo (boxes vazias -> roda)
+  loadCleanBackground();
+}
+
 function bestOverlap(box, oldBoxes) {
   let best = null;
   let bestArea = 0;
