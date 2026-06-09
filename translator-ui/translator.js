@@ -284,6 +284,44 @@ export async function autoFitCurrentPage(page, record) {
   }
 }
 
+// Botao "Revisar (9b)": manda original+rascunho da pagina pro modelo MAIOR revisar
+// e corrigir. Aplica so o que ele mudou (e re-renderiza). O 9b carrega na hora
+// (troca de modelo) — demora, mas e sob demanda.
+export async function reviewPage() {
+  const page = getCurrentPage();
+  const record = getCurrentPageRecord();
+  if (!page || !record?.boxes?.length) {
+    setToolStatus("Abra uma página com falas antes de revisar.");
+    return;
+  }
+  const toReview = record.boxes.filter((b) => String(b.translatedText || "").trim());
+  if (!toReview.length) {
+    setToolStatus("Nada traduzido nesta página para revisar.");
+    return;
+  }
+  setToolStatus("Revisando com o modelo maior (carrega o 9b, pode demorar)...");
+  const data = await api("/api/review-page", {
+    method: "POST",
+    body: JSON.stringify({
+      manga: state.selectedManga,
+      chapter: state.selectedChapter,
+      page: page.name,
+      boxes: record.boxes.map((b) => ({ id: b.id, originalText: b.originalText, translatedText: b.translatedText }))
+    })
+  });
+  const byId = new Map((data.boxes || []).map((r) => [r.id, r]));
+  let changed = 0;
+  for (const b of record.boxes) {
+    const r = byId.get(b.id);
+    if (r && r.changed && String(r.translatedText || "").trim()) {
+      b.translatedText = r.translatedText;
+      changed += 1;
+    }
+  }
+  if (getCurrentPage()?.name === page.name) renderCurrentPage();
+  setToolStatus(`✓ Revisor (${data.model || "9b"}): ${changed} de ${toReview.length} fala(s) ajustada(s).`);
+}
+
 function bestOverlap(box, oldBoxes) {
   let best = null;
   let bestArea = 0;

@@ -34,6 +34,8 @@ const OPENAI_MODEL = process.env.OPENAI_TRANSLATOR_MODEL || "gpt-4.1-mini";
 const LIBRETRANSLATE_URL = process.env.LIBRETRANSLATE_URL || "";
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_TRANSLATOR_MODEL || "";
+// Modelo usado SO no botao "Revisar" (mais inteligente, ex.: 9b). Vazio = usa o tradutor.
+const OLLAMA_REVIEWER_MODEL = process.env.OLLAMA_REVIEWER_MODEL || "";
 // Janela de contexto do Ollama (tokens). Everton subiu p/ 32k; aproveita p/
 // caber pagina + glossario + exemplos + perfis de personagem na mesma chamada.
 const OLLAMA_NUM_CTX = Number(process.env.OLLAMA_NUM_CTX || 8192);
@@ -1121,30 +1123,33 @@ async function translateWithOpenAi(text) {
   };
 }
 
-async function getOllamaModel() {
+// Escolhe um modelo do Ollama: usa o 'preferred' se estiver instalado (tag exata
+// ou mesma familia); senao cai pro primeiro disponivel (nao falha por inexistente).
+async function pickOllamaModel(preferred) {
   try {
-    const response = await fetch(`${OLLAMA_URL}/api/tags`, {
-      signal: AbortSignal.timeout(1500)
-    });
-    if (!response.ok) return OLLAMA_MODEL || "";
-
+    const response = await fetch(`${OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(1500) });
+    if (!response.ok) return preferred || "";
     const data = await response.json();
-    const models = Array.isArray(data.models) ? data.models : [];
-    const names = models.map((m) => m?.name).filter(Boolean);
+    const names = (Array.isArray(data.models) ? data.models : []).map((m) => m?.name).filter(Boolean);
     if (!names.length) return "";
-
-    // Se o modelo configurado existe (tag exata ou mesma familia), usa ele;
-    // senao cai pro primeiro instalado (evita falhar por modelo inexistente).
-    if (OLLAMA_MODEL) {
-      const base = OLLAMA_MODEL.split(":")[0];
-      const hit = names.find((n) => n === OLLAMA_MODEL)
-        || names.find((n) => n.split(":")[0] === base);
+    if (preferred) {
+      const base = preferred.split(":")[0];
+      const hit = names.find((n) => n === preferred) || names.find((n) => n.split(":")[0] === base);
       if (hit) return hit;
     }
     return names[0];
   } catch {
-    return OLLAMA_MODEL || "";
+    return preferred || "";
   }
+}
+
+async function getOllamaModel() {
+  return pickOllamaModel(OLLAMA_MODEL);
+}
+
+// Modelo do REVISOR (botao "Revisar"): por padrao o maior/melhor que voce tiver.
+async function getReviewerModel() {
+  return pickOllamaModel(OLLAMA_REVIEWER_MODEL || OLLAMA_MODEL);
 }
 
 async function translateWithOllama(text, context = {}) {
@@ -1514,6 +1519,50 @@ async function autoFitPage(imagePath, boxes, context = {}, maxIter = 2) {
     if (!changed) break;
   }
   return { boxes, issues };
+}
+
+// === Revisor (botao "Revisar"): 4b traduz, 9b REVISA e corrige =======
+// Recebe pares ORIGINAL + RASCUNHO e devolve a versao FINAL de cada um (igual se
+// ja estiver boa, corrigida se tiver erro). Usa o modelo revisor (maior).
+async function reviewBatchWithOllama(items, context = {}) {
+  const model = await getReviewerModel();
+  if (!model) return null;
+  const valid = items.filter((it) => String(it.draft || "").trim() && String(it.original || "").trim());
+  if (!valid.length) return [];
+
+  const glossary = await glossaryForManga(context.manga);
+  const characters = await charactersForManga(context.manga);
+  const glossaryText = glossary.filter((i) => i?.source && i?.target).map((i) => `${i.source} => ${i.target}`).join("\n");
+  const charactersText = Object.entries(characters).map(([n, v]) => `${n}: ${v}`).join("\n");
+
+  const system = [
+    "Você é um REVISOR profissional de tradução de mangá PT-BR (mais exigente que o tradutor).",
+    "Para CADA fala você recebe o ORIGINAL (inglês) e a TRADUÇÃO (rascunho). Devolva a versão FINAL:",
+    "- Se o rascunho está bom, repita-o IGUAL.",
+    "- Se tem erro, CORRIJA: fiel ao SENTIDO do original, PT-BR natural e coloquial, tom e VOZ do",
+    "  personagem, ACENTUAÇÃO e PONTUAÇÃO corretas, conciso (cabe no balão). Conserte erros de OCR.",
+    "- NUNCA invente nem mude o sentido do original. Preserve nomes próprios, glossário e SFX.",
+    glossaryText ? `Glossário (use sempre):\n${glossaryText}` : "",
+    charactersText ? `Vozes dos personagens:\n${charactersText}` : "",
+    "Responda APENAS com a lista numerada, UMA versão final por linha, na MESMA ordem. Nada além disso."
+  ].filter(Boolean).join("\n");
+
+  const numbered = valid.map((it, k) => `${k + 1}. ORIGINAL: ${it.original}\n   RASCUNHO: ${it.draft}`).join("\n");
+  const prompt = `Revise cada fala e dê a versão final:\n${numbered}\n\nFinais numeradas:`;
+
+  const response = await fetch(`${OLLAMA_URL}/api/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(180000),   // 9b e lento -> timeout maior
+    body: JSON.stringify({ model, system, prompt, stream: false, think: false, options: { temperature: 0.2, num_ctx: OLLAMA_NUM_CTX } })
+  });
+  if (!response.ok) throw new Error(`Revisor (Ollama) falhou: HTTP ${response.status}`);
+  const data = await response.json();
+  const parsed = parseNumberedList(stripThink(data.response || ""), valid.length);
+  return valid.map((it, k) => {
+    const fin = cleanOcrText(parsed[k] || "");
+    return { id: it.id, final: fin || it.draft };   // se vier vazio, mantem o rascunho
+  });
 }
 
 // === Fila de pre-processamento por capitulo =========================
@@ -1967,6 +2016,40 @@ const server = http.createServer(async (req, res) => {
         boxes: fitted.map((b) => ({ id: b.id, translatedText: b.translatedText })),
         qcOk: (issues || []).length === 0,
         qcIssues: issues || []
+      });
+      return;
+    }
+
+    // Revisor: o modelo MAIOR (9b) revisa/corrige a traducao do tradutor (4b).
+    if (req.method === "POST" && url.pathname === "/api/review-page") {
+      const body = await readJsonBody(req);
+      const manga = String(body.manga || "").trim();
+      const chapter = String(body.chapter || "").trim();
+      const boxes = Array.isArray(body.boxes) ? body.boxes : [];
+      if (!manga || !chapter) {
+        sendError(res, 400, "Manga e capitulo sao obrigatorios");
+        return;
+      }
+      const items = boxes
+        .filter((b) => String(b.translatedText || "").trim() && String(b.originalText || "").trim())
+        .map((b) => ({ id: b.id, original: b.originalText, draft: b.translatedText }));
+      const reviewed = (await reviewBatchWithOllama(items, { manga, chapter }).catch(() => null)) || [];
+      const byId = new Map(reviewed.map((r) => [r.id, String(r.final || "").trim()]));
+      const out = boxes.map((b) => {
+        const cur = String(b.translatedText || "");
+        const fin = byId.get(b.id);
+        const apply = fin && fin.length >= 2;   // validacao minima: nao vazio
+        return {
+          id: b.id,
+          translatedText: apply ? fin : cur,
+          changed: apply && fin.trim() !== cur.trim()   // ignora diferenca so de espaco
+        };
+      });
+      sendJson(res, 200, {
+        ok: true,
+        model: await getReviewerModel(),
+        boxes: out,
+        changed: out.filter((o) => o.changed).length
       });
       return;
     }

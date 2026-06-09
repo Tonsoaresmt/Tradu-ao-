@@ -52,6 +52,7 @@ export const elements = {
   copyOriginals: document.querySelector("#copy-originals"),
   acceptConfident: document.querySelector("#accept-confident"),
   autoOrganize: document.querySelector("#auto-organize"),
+  reviewPage: document.querySelector("#review-page"),
   readingMode: document.querySelector("#reading-mode"),
   toggleAdvanced: document.querySelector("#toggle-advanced"),
   toolStatus: document.querySelector("#tool-status"),
