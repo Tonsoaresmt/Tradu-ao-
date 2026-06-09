@@ -25,8 +25,17 @@ REM set "OLLAMA_TRANSLATOR_MODEL=qwen3.5:4b"
 REM Para priorizar VELOCIDADE em vez de qualidade, troque a 1a linha por:
 REM set "TRANSLATOR_PROVIDER=google"
 
-REM Abre o navegador depois de 3s, em segundo plano, sem travar o servidor.
-start "" /min powershell -NoProfile -Command "Start-Sleep -Seconds 3; Start-Process 'http://127.0.0.1:3210'"
+REM ===== Encerra instancias ANTIGAS (servidor + detector) =====
+REM Sem isso, se um servidor velho continuar rodando, o navegador segue vendo o
+REM codigo antigo (porta 3210 ocupada) e o detector velho e reusado. Aqui matamos
+REM qualquer node do translator-server e qualquer python do detector/service.py.
+echo Encerrando instancias antigas (se houver)...
+powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'translator-server\.js|detector.+service\.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+REM da um instante pra liberar as portas 3210/5000
+powershell -NoProfile -Command "Start-Sleep -Milliseconds 800"
+
+REM Abre o navegador depois de 4s, em segundo plano, sem travar o servidor.
+start "" /min powershell -NoProfile -Command "Start-Sleep -Seconds 4; Start-Process 'http://127.0.0.1:3210'"
 
 REM Sobe o servidor (fica rodando nesta janela).
 node translator-server.js

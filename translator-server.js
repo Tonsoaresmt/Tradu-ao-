@@ -47,7 +47,7 @@ const DETECTOR_PYTHON = process.env.DETECTOR_PYTHON || path.join(
   process.platform === "win32" ? "Scripts" : "bin",
   process.platform === "win32" ? "python.exe" : "python"
 );
-const DETECTOR_OCR = process.env.DETECTOR_OCR || "tesseract"; // tesseract | manga-ocr | none
+const DETECTOR_OCR = process.env.DETECTOR_OCR || "easyocr"; // easyocr | tesseract | manga-ocr | none
 const DETECTOR_STARTUP_TIMEOUT_MS = Number(process.env.DETECTOR_STARTUP_TIMEOUT_MS || 180000);
 
 const CONTENT_TYPES = {
