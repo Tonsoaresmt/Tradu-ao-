@@ -184,6 +184,52 @@ async function ensureDetector() {
   return detectorStarting;
 }
 
+// Estado das ferramentas (detector+OCR+GPU, tradutor) pro frontend mostrar a
+// barra de status. Usado em /api/library e no /api/status (poll de atualizacao).
+async function buildTools() {
+  const ocrAvailable = await commandAvailable(OCR_COMMAND);
+  const windowsOcrAvailable = process.platform === "win32" && await fs.pathExists(WINDOWS_OCR_SCRIPT);
+  const ollamaAvailable = await localServerAvailable(`${OLLAMA_URL}/api/tags`);
+  const ollamaModel = ollamaAvailable ? await getOllamaModel().catch(() => "") : "";
+  let effectiveProvider;
+  if (TRANSLATOR_PROVIDER === "google") effectiveProvider = "google";
+  else if (TRANSLATOR_PROVIDER === "ollama") effectiveProvider = ollamaAvailable ? "ollama" : "local-basic";
+  else effectiveProvider = ollamaAvailable
+    ? "ollama"
+    : (USE_OPENAI && process.env.OPENAI_API_KEY) ? "openai"
+    : LIBRETRANSLATE_URL ? "libretranslate"
+    : "google";
+  const detector = await detectorHealth();
+  const detectorPythonReady = await fs.pathExists(DETECTOR_PYTHON);
+  return {
+    bubbleDetector: {
+      running: Boolean(detector),
+      yolo: detector?.yolo || false,
+      gpu: detector?.gpu || false,
+      ocrEngine: detector?.ocrEngine || DETECTOR_OCR,
+      ocrReady: detector?.ocrReady || false,
+      pythonReady: detectorPythonReady,
+      url: DETECTOR_URL
+    },
+    ocr: {
+      available: ocrAvailable,
+      command: OCR_COMMAND,
+      language: OCR_LANG,
+      providers: {
+        tesseract: ocrAvailable,
+        windows: windowsOcrAvailable,
+        openaiConfigured: USE_OPENAI_OCR && Boolean(process.env.OPENAI_API_KEY)
+      }
+    },
+    translation: {
+      configured: TRANSLATOR_PROVIDER,
+      provider: effectiveProvider,
+      ollamaAvailable,
+      ollamaModel
+    }
+  };
+}
+
 async function detectBubbles(imagePath, engine) {
   const response = await fetch(`${DETECTOR_URL}/detect`, {
     method: "POST",
@@ -1500,50 +1546,9 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/api/library") {
       const libraryDir = await getLibraryDir();
-      const ocrAvailable = await commandAvailable(OCR_COMMAND);
-      const windowsOcrAvailable = process.platform === "win32" && await fs.pathExists(WINDOWS_OCR_SCRIPT);
-      const ollamaAvailable = await localServerAvailable(`${OLLAMA_URL}/api/tags`);
-      const ollamaModel = ollamaAvailable ? await getOllamaModel().catch(() => "") : "";
-      // Provedor EFETIVO (o que sera usado de fato), respeitando o modo configurado.
-      let effectiveProvider;
-      if (TRANSLATOR_PROVIDER === "google") effectiveProvider = "google";
-      else if (TRANSLATOR_PROVIDER === "ollama") effectiveProvider = ollamaAvailable ? "ollama" : "local-basic";
-      else effectiveProvider = ollamaAvailable
-        ? "ollama"
-        : (USE_OPENAI && process.env.OPENAI_API_KEY) ? "openai"
-        : LIBRETRANSLATE_URL ? "libretranslate"
-        : "google";
-      const detector = await detectorHealth();
-      const detectorPythonReady = await fs.pathExists(DETECTOR_PYTHON);
       sendJson(res, 200, {
         mangas: await listLibrary(),
-        tools: {
-          bubbleDetector: {
-            running: Boolean(detector),
-            yolo: detector?.yolo || false,
-            gpu: detector?.gpu || false,
-            ocrEngine: detector?.ocrEngine || DETECTOR_OCR,
-            ocrReady: detector?.ocrReady || false,
-            pythonReady: detectorPythonReady,
-            url: DETECTOR_URL
-          },
-          ocr: {
-            available: ocrAvailable,
-            command: OCR_COMMAND,
-            language: OCR_LANG,
-            providers: {
-              tesseract: ocrAvailable,
-              windows: windowsOcrAvailable,
-              openaiConfigured: USE_OPENAI_OCR && Boolean(process.env.OPENAI_API_KEY)
-            }
-          },
-          translation: {
-            configured: TRANSLATOR_PROVIDER,
-            provider: effectiveProvider,
-            ollamaAvailable,
-            ollamaModel
-          }
-        },
+        tools: await buildTools(),
         folders: {
           source: SOURCE_MANGAS_DIR,
           inProgress: IN_PROGRESS_DIR,
@@ -1553,6 +1558,11 @@ const server = http.createServer(async (req, res) => {
           activeLibrary: libraryDir
         }
       });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/status") {
+      sendJson(res, 200, { tools: await buildTools() });
       return;
     }
 

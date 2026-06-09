@@ -18,7 +18,7 @@ import {
   setStatus,
   setToolStatus
 } from "./editor.js";
-import { loadLibrary, saveProject } from "./library.js";
+import { loadLibrary, saveProject, refreshSystemStatus } from "./library.js";
 import { runOcr, suggestPage, applySuggestions, acceptConfident, copyOriginals, autoOrganize, autoTranslatePage } from "./translator.js";
 import { previewPage } from "./preview.js";
 import { exportChapter, preprocessChapter } from "./export.js";
@@ -85,6 +85,7 @@ function wireEvents() {
   //   navegação rápida são traduzidas quando você volta a elas.
   const autoProcessed = new Set();
   let autoBusy = false;
+  let statusSynced = false;
   async function maybeAutoTranslate() {
     if (autoBusy) return;
     const page = getCurrentPage();
@@ -101,6 +102,8 @@ function wireEvents() {
       setToolStatus(error.message);
     } finally {
       autoBusy = false;
+      // O detector ja subiu aqui -> atualiza a barra de status (EasyOCR·GPU etc.).
+      if (!statusSynced) statusSynced = await refreshSystemStatus();
       maybeAutoTranslate(); // pega a página atual (pode ter mudado)
     }
   }
@@ -234,3 +237,15 @@ function wireEvents() {
 wireEvents();
 loadLibrary();
 initAutosave();
+
+// O detector sobe sob demanda e a 1a vez demora (carrega YOLO + EasyOCR). A barra
+// de status inicial pode sair "Detector vermelho / CPU"; este poll a atualiza
+// sozinho assim que o detector ficar pronto (depois para).
+(function pollStatusUntilReady() {
+  let tries = 0;
+  const timer = setInterval(async () => {
+    tries += 1;
+    const ready = await refreshSystemStatus();
+    if (ready || tries >= 30) clearInterval(timer);
+  }, 5000);
+})();

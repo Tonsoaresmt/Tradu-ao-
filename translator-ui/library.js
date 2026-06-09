@@ -4,6 +4,22 @@ import { api } from "./api.js";
 import { renderCurrentPage, setStatus, setToolStatus, toolSummary, renderSystemStatus } from "./editor.js";
 import { markChapterSaved } from "./autosave.js";
 
+// Re-busca o status do sistema (leve) e redesenha a barra. Retorna true quando
+// o detector ja esta pronto (yolo carregado) — usado pra parar o poll.
+export async function refreshSystemStatus() {
+  try {
+    const data = await api("/api/status");
+    if (data?.tools) {
+      state.tools = data.tools;
+      renderSystemStatus();
+      return Boolean(data.tools.bubbleDetector?.yolo);
+    }
+  } catch {
+    /* silencioso */
+  }
+  return false;
+}
+
 export function renderFolders(folders) {
   elements.folderInfo.innerHTML = "";
   if (!folders) return;
