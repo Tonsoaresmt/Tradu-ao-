@@ -42,5 +42,13 @@ export async function previewPage() {
   elements.pageImage.onload = null;
   elements.pageImage.src = result.dataUrl;
   elements.boxLayer.innerHTML = "";
-  setToolStatus(`Previa: ${result.boxesRendered} fala(s) renderizada(s). Clique 'Editar' para voltar.`);
+
+  // Veredito do REVISOR (QC): fonte/centralizacao/encaixe fora do padrao.
+  const issues = Array.isArray(result.qcIssues) ? result.qcIssues : [];
+  if (issues.length) {
+    const amostra = issues.slice(0, 4).map((i) => `balão ${i.box}: ${i.problems.join("; ")}`).join(" | ");
+    setToolStatus(`Prévia: ${result.boxesRendered} fala(s). ⚠ Revisor apontou ${issues.length}: ${amostra}. 'Editar' p/ voltar.`);
+  } else {
+    setToolStatus(`Prévia: ${result.boxesRendered} fala(s) — revisor OK ✅. 'Editar' p/ voltar.`);
+  }
 }
