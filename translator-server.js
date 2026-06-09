@@ -884,13 +884,19 @@ async function recordTrainingExamples(project) {
       const originalText = cleanOcrText(box.originalText);
       const translatedText = cleanOcrText(box.translatedText);
       if (!originalText || !translatedText) continue;
+      if (originalText.length < 3) continue;   // ignora fragmento/ruido de OCR
 
-      // Gate de qualidade (ideia do quality_score do onyx): "human" quando o
-      // revisor escreveu/alterou a fala; "auto" quando so aceitou a sugestao.
+      // Gate de qualidade: "human" SO quando o humano REALMENTE alterou a sugestao
+      // automatica. Sem sugestao (nao da pra confirmar) = "auto".
       const suggestedText = cleanOcrText(box.suggestedText);
-      const quality = (!suggestedText || suggestedText.toLowerCase() !== translatedText.toLowerCase())
+      const quality = (suggestedText && suggestedText.toLowerCase() !== translatedText.toLowerCase())
         ? "human"
         : "auto";
+
+      // So GRAVA correcoes HUMANAS. A traducao automatica NAO entra na memoria
+      // (senao a memoria serve traducao ruim de volta, poluindo). A memoria so
+      // reusa "human" mesmo -> guardar "auto" era so lixo.
+      if (quality !== "human") continue;
 
       const example = {
         manga: project.manga,
