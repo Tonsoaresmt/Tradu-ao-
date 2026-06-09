@@ -247,7 +247,9 @@ export async function autoTranslatePage(page) {
 
   if (onThisPage()) renderCurrentPage();
   status(`✓ Página traduzida com ${motor}: ${record.boxes.length} fala(s). Revise o que precisar.`);
-  autoFitCurrentPage(page, record);   // background: encurta o que nao coube
+  // NÃO auto-encurtar: o encurtamento automático quebrava a gramática ("está"->"é",
+  // "sede"->"sedi"). A tradução do modelo fica como está (boa) e a FONTE só diminui
+  // pra caber. (autoFitCurrentPage continua disponível como ação manual opcional.)
   return true;
 }
 
