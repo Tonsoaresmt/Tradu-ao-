@@ -244,6 +244,7 @@ export function syncBoxForm() {
     elements.translatedText.value = "";
     elements.coverOriginal.checked = true;
     elements.fontSize.value = "18";
+    elements.fontWeight.value = "0";
     elements.boxX.value = "";
     elements.boxY.value = "";
     elements.boxWidth.value = "";
@@ -268,6 +269,7 @@ export function syncBoxForm() {
   elements.translatedText.value = box.translatedText || "";
   elements.coverOriginal.checked = box.coverOriginal !== false;
   elements.fontSize.value = box.fontSize || 18;
+  elements.fontWeight.value = box.fontWeight || 0;
   elements.boxX.value = (box.x * 100).toFixed(1);
   elements.boxY.value = (box.y * 100).toFixed(1);
   elements.boxWidth.value = (box.width * 100).toFixed(1);
@@ -326,6 +328,10 @@ export function renderBoxes() {
     input.style.fontSize = box.fontLocked
       ? `${Math.max(6, Math.round((box.fontSize || 18) * fontScale()))}px`
       : `${fitBoxFont(input.value || input.placeholder, box.width * imgW, box.height * imgH)}px`;
+    // feedback ao vivo da GROSSURA (faux-bold) — escalado pro tamanho do editor
+    input.style.webkitTextStroke = box.fontWeight
+      ? `${(Number(box.fontWeight) * 0.15).toFixed(2)}px currentColor`
+      : "";
     input.addEventListener("pointerdown", (event) => event.stopPropagation());
     input.addEventListener("focus", () => {
       if (state.selectedBoxId !== box.id) selectBox(box.id);

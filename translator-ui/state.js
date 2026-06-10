@@ -73,6 +73,7 @@ export const elements = {
   translatedText: document.querySelector("#translated-text"),
   coverOriginal: document.querySelector("#cover-original"),
   fontSize: document.querySelector("#font-size"),
+  fontWeight: document.querySelector("#font-weight"),
   boxX: document.querySelector("#box-x"),
   boxY: document.querySelector("#box-y"),
   boxWidth: document.querySelector("#box-width"),

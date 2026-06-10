@@ -555,70 +555,72 @@ def render_image(image_path, boxes, font_path, typeset=True):
         y2 = int(min(H, y1 + max(0.01, box.get("height", 0.1)) * H))
         return x1, y1, x2, y2
 
-    # 1) inpaint do texto original. CRUCIAL: limpa SO a area branca INTERNA do
-    # balao, RECUADA pra dentro, pra NUNCA apagar o contorno preto do balao (o
-    # anel que delimita a fala e a diferencia do cenario/narracao).
-    full_mask = np.zeros(img.shape[:2], dtype=np.uint8)
-    has_mask = False
+    # 1) COBRIR (nao reconstruir) o texto original. Filosofia: mexer o MINIMO.
+    # So tapa a MANCHA DAS LETRAS dentro da AREA BRANCA do balao DETECTADO, usando
+    # o proprio fundo (branco) do balao. NUNCA toca: a borda/anel do balao, a arte
+    # que invade, nem NADA FORA do balao (SFX, cenario, legenda). Sem inpaint.
     orig_font = {}   # id(box) -> tamanho de fonte medido do texto ORIGINAL (px)
+    orig_weight = {} # id(box) -> peso (espessura do traco / altura) do lettering original
     for box in boxes:
-        # No typeset, so limpa balao ja traduzido; no modo fundo-do-editor
-        # (typeset=False) limpa TODO balao detectado (tira o ingles de uma vez).
+        # No typeset, so cobre balao ja traduzido; no modo fundo-do-editor
+        # (typeset=False) cobre TODO balao detectado (tira o ingles de uma vez).
         if typeset and not str(box.get("translatedText", "")).strip():
             continue
         if box.get("coverOriginal") is False:
             continue
         if (box.get("type") or "fala").lower() == "sfx":
-            continue  # SFX: preserva a arte original (sem inpaint)
+            continue  # SFX nao e dialogo -> preserva a arte original
         x1, y1, x2, y2 = px(box)
         if x2 <= x1 or y2 <= y1:
             continue
-        # area branca interna do balao dentro da caixa, com recuo de seguranca
+        # AREA BRANCA INTERNA do balao. Se NAO houver (balao colorido, texto sobre
+        # arte, ou caixa que nao e balao de fala): NAO arrisca -> pula, deixa o
+        # original intacto. Isso impede apagar SFX/cenario/texto fora de balao.
         inner = bubble_inner_rect(img[y1:y2, x1:x2])
-        if inner:
-            ix, iy, iw, ih = inner
-            pad = max(2, int(min(iw, ih) * 0.06))   # nao encostar no anel preto
-            rx1, ry1 = x1 + ix + pad, y1 + iy + pad
-            rx2, ry2 = x1 + ix + iw - pad, y1 + iy + ih - pad
-        else:
-            pad_x, pad_y = int((x2 - x1) * 0.10), int((y2 - y1) * 0.10)
-            rx1, ry1, rx2, ry2 = x1 + pad_x, y1 + pad_y, x2 - pad_x, y2 - pad_y
+        if not inner:
+            continue
+        ix, iy, iw, ih = inner
+        pad = max(2, int(min(iw, ih) * 0.07))   # recuo: protege o anel/borda do balao
+        rx1, ry1 = x1 + ix + pad, y1 + iy + pad
+        rx2, ry2 = x1 + ix + iw - pad, y1 + iy + ih - pad
         if rx2 - rx1 < 4 or ry2 - ry1 < 4:
             continue
-        crop = img[ry1:ry2, rx1:rx2]
+        crop = img[ry1:ry2, rx1:rx2]            # VIEW de img -> alteracoes valem in-place
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
         _, mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        # PRESERVA a arte que INVADE o balao (rosto/cabelo do personagem, etc.):
-        # so limpa componentes escuros pequenos e INTERNOS (texto). Descarta os
-        # que encostam na borda da area (vem de fora) ou sao grandes (silhueta) —
-        # tradução não pode apagar recurso do original.
         mh, mw = mask.shape
         n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
         text_mask = np.zeros_like(mask)
         letter_h = []
         for i in range(1, n):
             cx, cy, cw, ch, area = stats[i]
-            # So preserva BLOBS GRANDES (arte/silhueta de personagem invadindo o
-            # balao). Letras sao pequenas e SEMPRE limpas — mesmo perto da borda
-            # (senao sobra texto ingles no fundo). Nao usar "encosta na borda".
-            too_big = (cw > mw * 0.62 or ch > mh * 0.62 or area > 0.16 * mw * mh)
-            if too_big:
+            # BLOB GRANDE = arte/silhueta de personagem invadindo o balao -> PRESERVA.
+            if cw > mw * 0.62 or ch > mh * 0.62 or area > 0.16 * mw * mh:
                 continue
             text_mask[labels == i] = 255
             if ch >= 4 and ch < mh * 0.5:        # altura de letra plausivel
                 letter_h.append(ch)
-        # Tamanho de fonte do ORIGINAL: mediana da altura das letras / ~0.70
-        # (altura da maiuscula ~ 70% do corpo da fonte). Serve de ALVO p/ a
-        # traducao casar com o tamanho que o letrista original usou.
+        if not text_mask.any():
+            continue                             # nada que pareca texto -> nao mexe
+        # Fonte do ORIGINAL: mediana da altura das letras / ~0.70 (alvo de tamanho)
+        # + PESO: espessura mediana do traco (distance transform) / altura -> razao
+        # reproduzida no typeset como faux-bold (segue o "encorpado" da obra).
         if letter_h:
             letter_h.sort()
-            cap = letter_h[len(letter_h) // 2]
-            orig_font[id(box)] = max(MIN_FONT_BASE, int(round(cap / 0.70)))
-        mask = cv2.dilate(text_mask, np.ones((3, 3), np.uint8), iterations=2)
-        full_mask[ry1:ry2, rx1:rx2] = mask
-        has_mask = True
-    if has_mask:
-        img = cv2.inpaint(img, full_mask, 5, cv2.INPAINT_NS)
+            cap_h = letter_h[len(letter_h) // 2]
+            orig_font[id(box)] = max(MIN_FONT_BASE, int(round(cap_h / 0.70)))
+            dt = cv2.distanceTransform(text_mask, cv2.DIST_L2, 3)
+            dvals = dt[dt > 0.5]
+            if dvals.size:
+                stroke = float(np.median(dvals)) * 2.0
+                orig_weight[id(box)] = max(0.06, min(0.22, stroke / max(1.0, cap_h)))
+        # Cor de fundo do balao = mediana dos pixels NAO-texto (o branco do balao).
+        bgpx = crop[mask == 0]
+        bg = (np.median(bgpx.reshape(-1, 3), axis=0).astype(np.uint8)
+              if bgpx.size else np.array([255, 255, 255], dtype=np.uint8))
+        # TAPA so os pixels de texto (levemente dilatados) com o fundo do balao.
+        text_mask = cv2.dilate(text_mask, np.ones((3, 3), np.uint8), iterations=2)
+        crop[text_mask > 0] = bg
 
     # 2) typeset da traducao
     out = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
@@ -659,13 +661,14 @@ def render_image(image_path, boxes, font_path, typeset=True):
         elif is_sfx:
             max_font, stroke_div, fill = max(22, int(H * 0.05)), 6, 0.9
         elif btype == "narracao":
-            max_font, stroke_div, fill = max(30, int(H * 0.05)), 18, 0.92
+            max_font, stroke_div, fill = max(30, int(H * 0.05)), 18, 0.94
         else:  # fala / pensamento
-            max_font, stroke_div, fill = max(34, int(H * 0.06)), 16, 0.92
+            max_font, stroke_div, fill = max(34, int(H * 0.06)), 16, 0.94
         items.append({
             "box": box, "text": text, "btype": btype, "is_sfx": is_sfx, "is_bubble": is_bubble,
             "area": (ax1, ay1, aw, ah), "max_font": max_font, "fill": fill, "stroke_div": stroke_div,
-            "orig_font": orig_font.get(id(box)),   # tamanho medido do texto original
+            "orig_font": orig_font.get(id(box)),     # tamanho medido do texto original
+            "orig_weight": orig_weight.get(id(box)), # peso (espessura do traco) do original
         })
 
     # --- Pass 1: TAMANHO UNIFORME dos baloes de fala da pagina (estetica scan) ---
@@ -676,9 +679,9 @@ def render_image(image_path, boxes, font_path, typeset=True):
         if not it["is_bubble"]:
             continue
         ax1, ay1, aw, ah = it["area"]
-        r = fit_text_ellipse(draw, it["text"], font_path, aw, ah,
-                             min_size=min_font, max_size=it["max_font"], k=K_ELLIPSE)
-        it["_ell"] = r
+        fw, fh = aw * 0.84, ah * 0.84           # mesma margem do desenho (mfrac 0.08/lado)
+        r = fit_text(draw, it["text"], font_path, fw, fh,
+                     min_size=min_font, max_size=it["max_font"], fill=it["fill"])
         if r:
             sizes.append(getattr(r[0], "size", 0))
     uniform = None
@@ -706,30 +709,45 @@ def render_image(image_path, boxes, font_path, typeset=True):
         else:
             cap = max_font
 
+        # CONSISTENCIA (global, vale p/ qualquer obra): prende a fonte de cada
+        # BALAO numa faixa em torno do consenso da pagina (uniform). A fonte medida
+        # do original as vezes sai pequena demais em fala curta -> gera o "fonte
+        # destoa / SEMPRE minusculo". O encaixe (fit_text_ellipse/fit_text) ainda
+        # encolhe se nao couber no balao, entao subir o teto NUNCA causa transbordo.
+        if uniform and is_bubble and not manual:
+            cap = int(max(uniform * 0.8, min(cap, uniform * 1.4)))
+            cap = max(min_font, min(cap, max_font))
+
+        # Encaixe RETANGULAR centralizado (caixa de dialogo) — sem forcar oval.
         method = "rect"
-        res = None
-        if is_bubble:
-            res = fit_text_ellipse(draw, text, font_path, aw, ah,
-                                   min_size=min_font, max_size=cap, k=K_ELLIPSE)
-            if res:
-                method = "ellipse"
-                fx1, fy1, fw, fh = ax1, ay1, aw, ah
-        if not res:
-            mfrac = 0.0 if is_sfx else (0.12 if is_bubble else 0.07)
-            mx, my = int(aw * mfrac), int(ah * mfrac)
-            fx1, fy1, fw, fh = ax1 + mx, ay1 + my, aw - 2 * mx, ah - 2 * my
-            res = fit_text(draw, text, font_path, fw, fh,
-                           min_size=min_font, max_size=cap, fill=fill)
+        mfrac = 0.0 if is_sfx else (0.08 if is_bubble else 0.07)
+        mx, my = int(aw * mfrac), int(ah * mfrac)
+        fx1, fy1, fw, fh = ax1 + mx, ay1 + my, aw - 2 * mx, ah - 2 * my
+        res = fit_text(draw, text, font_path, fw, fh,
+                       min_size=min_font, max_size=cap, fill=fill)
 
         font, wrapped, tw, th, spacing = res
         # centraliza o bloco na area (centro visual do balao)
         tx = fx1 + (fw - tw) / 2
         ty = fy1 + (fh - th) / 2
-        sw = max(1, getattr(font, "size", 14) // stroke_div)
+        # GROSSURA (faux-bold) CONTROLAVEL. SFX/grito = contorno BRANCO (le sobre a
+        # arte). Balao de fala = faux-bold PRETO: 1) box.fontWeight (humano manda, em
+        # px) tem prioridade; 2) senao auto SUTIL — so engrossa um tico se o lettering
+        # ORIGINAL e encorpado. Default leve: stroke grosso "borra" junçoes (ex.: o M).
+        fsize = getattr(font, "size", 14)
         if is_sfx or btype == "grito":
-            sw = max(2, sw)  # contorno forte pra ler sobre a arte
+            sw, stroke_fill = max(2, fsize // stroke_div), "white"
+        else:
+            mw = box.get("fontWeight")
+            if mw is not None:
+                sw = max(0, int(round(float(mw))))        # humano controla (px)
+            else:
+                weight = it.get("orig_weight") or 0.10
+                sw = 1 if weight >= 0.13 else 0           # auto sutil (so original encorpado)
+            sw = min(sw, max(1, fsize // 8))              # teto anti-borrao
+            stroke_fill = "black"
         draw.multiline_text((tx, ty), wrapped, font=font, fill="black",
-                            align="center", spacing=spacing, stroke_width=sw, stroke_fill="white")
+                            align="center", spacing=spacing, stroke_width=sw, stroke_fill=stroke_fill)
         rendered += 1
 
         # ---- QC: confere se ficou no padrao (REVISOR FINAL geometrico) ----
@@ -742,8 +760,6 @@ def render_image(image_path, boxes, font_path, typeset=True):
             problems.append("texto pequeno demais para o balao")
         if uniform and is_bubble and getattr(font, "size", 0) < uniform * 0.7:
             problems.append("fonte destoa das outras (muito menor) — revise o balao")
-        if is_bubble and method == "rect":
-            problems.append("nao encaixou no formato oval")
         if _has_orphan(wrapped.split("\n")):
             problems.append("linha isolada muito curta (rebalancear/encurtar)")
         if problems:
