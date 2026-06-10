@@ -44,6 +44,7 @@ export const elements = {
   referenceUpload: document.querySelector("#reference-upload"),
   learnStyle: document.querySelector("#learn-style"),
   saveProject: document.querySelector("#save-project"),
+  resetChapter: document.querySelector("#reset-chapter"),
   autosaveIndicator: document.querySelector("#autosave-indicator"),
   exportChapter: document.querySelector("#export-chapter"),
   preprocessChapter: document.querySelector("#preprocess-chapter"),

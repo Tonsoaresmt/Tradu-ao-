@@ -2321,6 +2321,31 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "POST" && url.pathname === "/api/reset-chapter") {
+      const body = await readJsonBody(req);
+      const manga = String(body.manga || "").trim();
+      const chapter = String(body.chapter || "").trim();
+      if (!manga || !chapter) {
+        sendError(res, 400, "Manga e capitulo sao obrigatorios");
+        return;
+      }
+      // Zera o TRABALHO deste capitulo: projeto (.json com as falas/traduções),
+      // páginas extraídas (regeneram do CBZ ao reabrir) e renders. PRESERVA o
+      // CBZ de origem, o estilo/glossário e a referência do estúdio.
+      const projectPath = buildProjectPath(manga, chapter);
+      const pagesDir = path.join(PAGES_DIR, sanitizeFileName(manga), sanitizeFileName(chapter));
+      const { dir: outDir, cbz: outCbz } = buildOutputPaths(manga, chapter);
+      const removed = [];
+      for (const target of [projectPath, pagesDir, outDir, outCbz]) {
+        if (await fs.pathExists(target)) {
+          await fs.remove(target).catch(() => {});
+          removed.push(path.basename(target));
+        }
+      }
+      sendJson(res, 200, { ok: true, removed });
+      return;
+    }
+
     if (req.method === "POST" && url.pathname === "/api/preprocess-chapter") {
       const body = await readJsonBody(req);
       const manga = String(body.manga || "").trim();

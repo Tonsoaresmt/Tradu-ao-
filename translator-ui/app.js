@@ -20,7 +20,7 @@ import {
   setStatus,
   setToolStatus
 } from "./editor.js";
-import { loadLibrary, saveProject, refreshSystemStatus } from "./library.js";
+import { loadLibrary, saveProject, refreshSystemStatus, openChapter } from "./library.js";
 import { runOcr, suggestPage, applySuggestions, acceptConfident, copyOriginals, autoOrganize, autoTranslatePage, loadCleanBackground, reviewPage, retranslatePage, retranslateBox } from "./translator.js";
 import { previewPage } from "./preview.js";
 import { exportChapter, preprocessChapter } from "./export.js";
@@ -177,6 +177,32 @@ function wireEvents() {
   window.addEventListener("page-shown", maybeAutoTranslate);
   // Paginas que JA tem baloes (salvas): carrega o fundo limpo ao exibir.
   window.addEventListener("page-shown", () => loadCleanBackground());
+  // Zerar tudo (escondido no avançado): apaga o trabalho do capítulo e volta ao
+  // original limpo. O CBZ de origem é preservado; pede confirmação dupla.
+  elements.resetChapter?.addEventListener("click", async () => {
+    const manga = state.selectedManga, chapter = state.selectedChapter;
+    if (!manga || !chapter) { setToolStatus("Abra um capítulo primeiro."); return; }
+    if (!window.confirm(`Zerar TUDO de "${chapter}"?\n\nApaga todas as traduções, balões e renders desta obra/capítulo, voltando ao original limpo.\nO arquivo de origem (CBZ) é preservado.\n\nNão dá pra desfazer.`)) return;
+    elements.resetChapter.disabled = true;
+    setToolStatus("Zerando o capítulo...");
+    try {
+      const res = await fetch("/api/reset-chapter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ manga, chapter })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      state.project = { manga, chapter, pages: {} };
+      state.selectedBoxId = null;
+      await openChapter(manga, chapter);   // recarrega do zero, página limpa
+      setToolStatus("Capítulo zerado — original limpo. (CBZ de origem preservado.)");
+    } catch (error) {
+      setToolStatus(`Não consegui zerar: ${error.message}`);
+    } finally {
+      elements.resetChapter.disabled = false;
+    }
+  });
   elements.copyOriginals.addEventListener("click", () => copyOriginals().catch((error) => setToolStatus(error.message)));
   elements.removeBox.addEventListener("click", () => {
     const pageRecord = getCurrentPageRecord();
