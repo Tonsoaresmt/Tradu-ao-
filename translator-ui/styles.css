@@ -893,6 +893,11 @@ body:not(.view-original) #orig-stage { display: none; }
 .fala-panel .option-grid { grid-template-columns: 1fr 1fr; }
 .fala-panel .check-option { grid-column: 1 / -1; }
 .atalhos-panel { margin-top: auto; }
+
+/* ===== Painel "Referência do estúdio" (barra lateral) ===== */
+.reference-panel { margin-top: 18px; }
+.reference-panel p { margin: 0; line-height: 1.4; }
+.reference-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .atalhos-grid { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; line-height: 1.35; }
 .atalhos-grid b { color: var(--ink); font-weight: 700; }
 

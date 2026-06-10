@@ -26,6 +26,19 @@
             <div id="folder-info" class="folder-info"></div>
           </details>
         </section>
+
+        <section class="panel reference-panel">
+          <div class="panel-header">
+            <h2>Referência do estúdio</h2>
+          </div>
+          <p class="muted small">Envie a tradução <b>profissional</b> desta obra (.cbz ou imagens). A IA aprende o <b>estilo</b> (tom, honoríficos, termos) e aplica em toda tradução da obra.</p>
+          <div id="reference-status" class="status small">Abra um capítulo primeiro.</div>
+          <input id="reference-file" type="file" accept=".cbz,.zip,image/jpeg,image/png,image/webp" multiple hidden>
+          <div class="reference-actions">
+            <button id="reference-upload" class="ghost-button small" type="button">+ Adicionar referência</button>
+            <button id="learn-style" class="ghost-button small" type="button">Aprender estilo</button>
+          </div>
+        </section>
       </aside>
 
       <main class="workspace">

@@ -25,6 +25,7 @@ import { runOcr, suggestPage, applySuggestions, acceptConfident, copyOriginals, 
 import { previewPage } from "./preview.js";
 import { exportChapter, preprocessChapter } from "./export.js";
 import { initAutosave } from "./autosave.js";
+import { initReference } from "./reference.js";
 
 function toggleReading() {
   state.reading = !state.reading;
@@ -312,6 +313,7 @@ function wireEvents() {
 wireEvents();
 loadLibrary();
 initAutosave();
+initReference();
 
 // O detector sobe sob demanda e a 1a vez demora (carrega YOLO + EasyOCR). A barra
 // de status inicial pode sair "Detector vermelho / CPU"; este poll a atualiza

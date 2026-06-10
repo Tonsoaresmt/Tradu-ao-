@@ -24,6 +24,10 @@ const TRAINING_EXAMPLES_PATH = path.join(TRAINING_DIR, "exemplos.jsonl");
 const TRAINING_GLOSSARY_PATH = path.join(TRAINING_DIR, "glossario.json");
 const TRAINING_CHARACTERS_PATH = path.join(TRAINING_DIR, "personagens.json");
 const TRAINING_STYLE_PATH = path.join(TRAINING_DIR, "estilo.txt");
+// Perfis de estilo POR OBRA aprendidos da tradução de referência (estúdio).
+const TRAINING_STYLES_PATH = path.join(TRAINING_DIR, "estilos-obras.json");
+// Páginas da tradução PROFISSIONAL de referência, por obra (upload pela UI).
+const REFERENCES_DIR = path.join(TRANSLATOR_ROOT_DIR, "referencias");
 const PUBLIC_DIR = path.join(__dirname, "translator-ui");
 const WINDOWS_OCR_SCRIPT = path.join(__dirname, "tools", "windows-ocr.ps1");
 const OCR_COMMAND = process.env.TESSERACT_PATH || "tesseract";
@@ -397,7 +401,8 @@ async function ensureTranslatorDirs() {
     fs.ensureDir(PAGES_DIR),
     fs.ensureDir(OUTPUT_DIR),
     fs.ensureDir(PROJECTS_DIR),
-    fs.ensureDir(TRAINING_DIR)
+    fs.ensureDir(TRAINING_DIR),
+    fs.ensureDir(REFERENCES_DIR)
   ]);
 
   if (!await fs.pathExists(TRAINING_STYLE_PATH)) {
@@ -932,6 +937,111 @@ async function loadTrainingStyle() {
   return fs.readFile(TRAINING_STYLE_PATH, "utf8").catch(() => "");
 }
 
+// ===== Estilo POR OBRA aprendido da tradução de referência (estúdio) =====
+async function loadObraStyles() {
+  return fs.readJson(TRAINING_STYLES_PATH).catch(() => ({}));
+}
+
+// Estilo efetivo = estilo global (estilo.txt) + perfil aprendido da obra.
+async function styleForManga(manga) {
+  const globalStyle = await loadTrainingStyle();
+  if (!manga) return globalStyle;
+  const styles = await loadObraStyles();
+  const entry = Object.entries(styles).find(([key]) => memoryKey(key) === memoryKey(manga));
+  const own = entry?.[1]?.perfil || "";
+  return [globalStyle, own].filter(Boolean).join("\n\n");
+}
+
+function referenceDir(manga) {
+  const safe = String(manga || "").replace(/[<>:"/\\|?*]/g, "_").trim();
+  return path.join(REFERENCES_DIR, safe || "_sem-nome");
+}
+
+// "Aprender estilo": OCR (PT) numa amostra das páginas de referência e
+// destilação de um PERFIL DE ESTILO pelo Ollama. De propósito NÃO usa pares
+// EN→PT: a referência costuma vir de OUTRA fonte (estúdio traduz do japonês),
+// então copiar frases ensinaria o modelo a divergir do original — só o ESTILO
+// (tom, honoríficos, terminologia, vozes) migra para o prompt da obra.
+async function learnStyleFromReference(job, manga, pages) {
+  try {
+    const MAX_PAGES = 16;                  // amostra espalhada cobre a obra sem demorar
+    const step = Math.max(1, Math.floor(pages.length / MAX_PAGES));
+    const sample = pages.filter((_, i) => i % step === 0).slice(0, MAX_PAGES);
+    job.total = sample.length + 1;         // +1 = etapa de análise da IA
+    const corpus = [];
+    await ensureDetector();
+    for (const imagePath of sample) {
+      job.current = path.basename(imagePath);
+      try {
+        const det = await detectBubbles(imagePath, "easyocr-pt");
+        for (const line of det.lines || []) {
+          const text = String(line.originalText || "").trim();
+          if (text && (text.match(/\p{L}/gu) || []).length >= 3) corpus.push(text);
+        }
+      } catch (error) {
+        // página ruim não derruba o aprendizado; guarda o motivo p/ diagnóstico
+        job.lastError = error.message;
+      }
+      job.done += 1;
+    }
+    if (corpus.length < 10) {
+      throw new Error(`OCR leu pouco texto da referência (${corpus.length} falas) — confira as páginas enviadas.`);
+    }
+    job.current = "analisando o estilo (IA)...";
+    const profile = await distillStyleWithOllama(manga, corpus);
+    if (!profile) throw new Error("A IA não devolveu um perfil (o Ollama está aberto?).");
+    const styles = await loadObraStyles();
+    styles[manga] = {
+      perfil: profile,
+      paginas: sample.length,
+      falas: corpus.length,
+      atualizadoEm: new Date().toISOString()
+    };
+    await fs.writeJson(TRAINING_STYLES_PATH, styles, { spaces: 2 });
+    job.done += 1;
+    job.profile = profile;
+    job.status = "done";
+  } catch (error) {
+    job.status = "error";
+    job.error = error.message;
+  } finally {
+    job.finishedAt = new Date().toISOString();
+  }
+}
+
+async function distillStyleWithOllama(manga, corpus) {
+  const model = await getReviewerModel();   // usa o modelo mais capaz disponível
+  if (!model) return "";
+  const sample = corpus.slice(0, 220).join("\n");
+  const system = [
+    "Você é editor-chefe de scanlation PT-BR. Vai receber falas extraídas por OCR (com pequenos erros)",
+    `da tradução PROFISSIONAL da obra "${manga}". Escreva um PERFIL DE ESTILO curto para os tradutores`,
+    "IMITAREM o estilo (não o conteúdo). Cubra, quando der para perceber:",
+    "- tom/registro (formal? coloquial? gírias? palavrões?)",
+    "- honoríficos japoneses (mantém -san/-kun/-chan? quais?)",
+    "- terminologia e nomes recorrentes (personagens, apelidos, termos fixos — liste-os)",
+    "- interjeições/pontuação típicas e como traduz saudações",
+    "- 2 ou 3 exemplos curtos de frases típicas do estilo",
+    "Máximo 12 linhas, objetivas, em PT-BR. Comece com 'Estilo desta obra:' e responda SÓ o perfil."
+  ].join("\n");
+  const response = await fetch(`${OLLAMA_URL}/api/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(300000),
+    body: JSON.stringify({
+      model,
+      system,
+      prompt: `Falas da tradução profissional:\n${sample}\n\nPerfil de estilo:`,
+      stream: false,
+      think: false,
+      options: { temperature: 0.3, num_ctx: OLLAMA_NUM_CTX }
+    })
+  });
+  if (!response.ok) throw new Error(`Ollama HTTP ${response.status}`);
+  const data = await response.json();
+  return stripThink(String(data.response || "")).trim();
+}
+
 async function loadGlossaryRaw() {
   const glossary = await fs.readJson(TRAINING_GLOSSARY_PATH).catch(() => ({ terms: [] }));
   return {
@@ -1162,7 +1272,7 @@ async function translateWithOllama(text, context = {}) {
   const model = await getOllamaModel();
   if (!model) return null;
 
-  const style = await loadTrainingStyle();
+  const style = await styleForManga(context.manga);
   const glossary = await glossaryForManga(context.manga);
   const characters = await charactersForManga(context.manga);
   const examples = await findRelevantTrainingExamples(text, context);
@@ -1250,7 +1360,7 @@ async function translateBatchWithOllama(texts, context = {}) {
   const idxs = cleaned.map((t, i) => (t ? i : -1)).filter((i) => i >= 0);
   if (!idxs.length) return { provider: `ollama:${model}`, texts: cleaned.map(() => "") };
 
-  const style = await loadTrainingStyle();
+  const style = await styleForManga(context.manga);
   const glossary = await glossaryForManga(context.manga);
   const characters = await charactersForManga(context.manga);
   const joined = idxs.map((i) => cleaned[i]).join("\n");
@@ -2076,6 +2186,97 @@ const server = http.createServer(async (req, res) => {
         boxes: out,
         changed: out.filter((o) => o.changed).length
       });
+      return;
+    }
+
+    // ===== Referência do estúdio (por obra): info / upload / aprender estilo =====
+    if (req.method === "GET" && url.pathname === "/api/reference") {
+      const manga = String(url.searchParams.get("manga") || "").trim();
+      if (!manga) {
+        sendError(res, 400, "Manga é obrigatório");
+        return;
+      }
+      const dir = referenceDir(manga);
+      const pages = (await fs.pathExists(dir)) ? await collectImageFiles(dir).catch(() => []) : [];
+      const styles = await loadObraStyles();
+      const entry = Object.entries(styles).find(([key]) => memoryKey(key) === memoryKey(manga));
+      sendJson(res, 200, {
+        ok: true,
+        pages: pages.length,
+        profile: entry?.[1]?.perfil || "",
+        learnedPages: entry?.[1]?.paginas || 0,
+        learnedAt: entry?.[1]?.atualizadoEm || null
+      });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/reference-upload") {
+      // corpo CRU (binário): .cbz/.zip do estúdio ou imagem avulsa.
+      const manga = String(url.searchParams.get("manga") || "").trim();
+      const name = String(url.searchParams.get("name") || "").trim();
+      if (!manga || !name) {
+        sendError(res, 400, "manga e name são obrigatórios");
+        return;
+      }
+      const safeName = path.basename(name).replace(/[<>:"|?*]/g, "_");
+      const lower = safeName.toLowerCase();
+      const isZip = lower.endsWith(".cbz") || lower.endsWith(".zip");
+      const isImage = /\.(jpe?g|png|webp)$/i.test(lower);
+      if (!isZip && !isImage) {
+        sendError(res, 400, "Formato não suportado (use .cbz, .zip, .jpg, .png ou .webp)");
+        return;
+      }
+      const chunks = [];
+      let size = 0;
+      for await (const chunk of req) {
+        size += chunk.length;
+        if (size > 300 * 1024 * 1024) {
+          sendError(res, 413, "Arquivo grande demais (máx. 300 MB)");
+          return;
+        }
+        chunks.push(chunk);
+      }
+      const buf = Buffer.concat(chunks);
+      if (!buf.length) {
+        sendError(res, 400, "Arquivo vazio");
+        return;
+      }
+      const dir = referenceDir(manga);
+      await fs.ensureDir(dir);
+      if (isZip) {
+        const tmp = path.join(dir, `_upload_${Date.now()}.zip`);
+        await fs.writeFile(tmp, buf);
+        try {
+          await extractZip(tmp, { dir });
+        } finally {
+          await fs.remove(tmp).catch(() => {});
+        }
+      } else {
+        await fs.writeFile(path.join(dir, safeName), buf);
+      }
+      const pages = await collectImageFiles(dir).catch(() => []);
+      sendJson(res, 200, { ok: true, pages: pages.length });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/learn-style") {
+      const body = await readJsonBody(req);
+      const manga = String(body.manga || "").trim();
+      if (!manga) {
+        sendError(res, 400, "Manga é obrigatório");
+        return;
+      }
+      const dir = referenceDir(manga);
+      const rel = (await fs.pathExists(dir)) ? await collectImageFiles(dir).catch(() => []) : [];
+      if (!rel.length) {
+        sendError(res, 400, "Nenhuma página de referência. Envie o CBZ/imagens do estúdio primeiro.");
+        return;
+      }
+      // collectImageFiles devolve caminhos RELATIVOS — o detector precisa do absoluto.
+      const pages = rel.map((p) => path.join(dir, p));
+      const job = createJob("learn-style", { manga });
+      learnStyleFromReference(job, manga, pages); // roda em background
+      sendJson(res, 200, { ok: true, jobId: job.id, pages: pages.length });
       return;
     }
 

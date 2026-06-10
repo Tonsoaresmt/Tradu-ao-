@@ -110,7 +110,7 @@ def get_ocr(engine):
             _state["ocr_engines"][engine] = obj
             log("manga-ocr pronto.")
             return obj
-        if engine == "easyocr":
+        if engine in ("easyocr", "easyocr-pt"):
             import easyocr
             gpu = False
             try:
@@ -118,10 +118,13 @@ def get_ocr(engine):
                 gpu = bool(torch.cuda.is_available())
             except Exception:
                 gpu = False
-            log(f"carregando easyocr (IA, gpu={gpu}; baixa o modelo de EN na 1a vez)...")
-            reader = easyocr.Reader(["en"], gpu=gpu, verbose=False)
+            # 'easyocr' = ingles; 'easyocr-pt' = portugues (latin_g2, com acentos) —
+            # usado p/ ler a TRADUCAO DE REFERENCIA do estudio (aprender estilo).
+            langs = ["pt"] if engine == "easyocr-pt" else ["en"]
+            log(f"carregando easyocr {langs} (IA, gpu={gpu}; baixa o modelo na 1a vez)...")
+            reader = easyocr.Reader(langs, gpu=gpu, verbose=False)
             _state["ocr_engines"][engine] = reader
-            log("easyocr pronto.")
+            log(f"easyocr {langs} pronto.")
             return reader
         if engine == "tesseract":
             import pytesseract
@@ -182,7 +185,7 @@ def ocr_crop(engine, pil_image):
     try:
         if engine == "manga-ocr":
             return (ocr(pil_image) or "").strip()
-        if engine == "easyocr":
+        if engine.startswith("easyocr"):
             import numpy as np
             import cv2
             arr = np.array(pil_image.convert("RGB"))

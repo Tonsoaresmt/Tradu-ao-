@@ -25,6 +25,8 @@ tradutor-manga/treino/exemplos.jsonl
 tradutor-manga/treino/glossario.json
 tradutor-manga/treino/personagens.json
 tradutor-manga/treino/estilo.txt
+tradutor-manga/treino/estilos-obras.json
+tradutor-manga/referencias/
 
 # Backups de reset locais
 _backup-reset-*/
