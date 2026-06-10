@@ -15,6 +15,8 @@ import {
   startDraw,
   handlePointerMove,
   handlePointerUp,
+  nudgeSelectedBox,
+  adjustSelectedFont,
   setStatus,
   setToolStatus
 } from "./editor.js";
@@ -74,23 +76,7 @@ function navigateBox(dir) {
   selectBox(boxes[ni].id);
 }
 
-// Q/E: fonte da fala selecionada −/+ (trava no tamanho escolhido, como o campo Fonte).
-function adjustSelectedFont(delta) {
-  const box = getSelectedBox();
-  if (!box) return false;
-  let base = box.fontLocked ? Number(box.fontSize) || 0 : 0;
-  if (!base) {
-    // parte do tamanho ATUAL auto-ajustado (px do editor -> px da página)
-    const inline = elements.boxLayer.querySelector(".translation-box.selected .box-input");
-    const scale = (elements.pageImage.clientHeight || 1) / (elements.pageImage.naturalHeight || 1);
-    const px = inline ? parseFloat(getComputedStyle(inline).fontSize) : 18;
-    base = Math.round(px / (scale || 1)) || 18;
-  }
-  const size = clamp(base + delta, 8, 160);
-  updateSelectedBox({ fontSize: size, fontLocked: true });
-  if (elements.fontSize) elements.fontSize.value = size;
-  return true;
-}
+// Q/E e a toolbar flutuante usam nudgeSelectedBox/adjustSelectedFont do editor.js.
 
 function wireEvents() {
   elements.reloadLibrary.addEventListener("click", loadLibrary);
@@ -247,20 +233,6 @@ function wireEvents() {
   elements.boxLayer.addEventListener("pointerdown", startDraw);
   window.addEventListener("pointermove", handlePointerMove);
   window.addEventListener("pointerup", handlePointerUp);
-
-  // Ajuste fino de posicao do balao selecionado: Alt + setas (Alt+Shift = passo maior).
-  // Funciona mesmo digitando no balao (Alt nao interfere no cursor do texto).
-  function nudgeSelectedBox(dx, dy) {
-    const box = getSelectedBox();
-    if (!box) return false;
-    box.x = clamp(box.x + dx, 0, 1 - box.width);
-    box.y = clamp(box.y + dy, 0, 1 - box.height);
-    const node = elements.boxLayer.querySelector(`.translation-box[data-id="${box.id}"]`);
-    if (node) { node.style.left = `${box.x * 100}%`; node.style.top = `${box.y * 100}%`; }
-    if (elements.boxX) elements.boxX.value = (box.x * 100).toFixed(1);
-    if (elements.boxY) elements.boxY.value = (box.y * 100).toFixed(1);
-    return true;
-  }
 
   // ===== Atalhos da BANCADA =====
   // Regra: atalhos de LETRA (Q/E/R/T, WASD, Z/X/C/V, Espaço) só valem FORA da

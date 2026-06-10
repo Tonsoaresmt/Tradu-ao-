@@ -701,6 +701,36 @@ body.reading-mode .translation-box {
 }
 body.reading-mode .box-input { cursor: default; }
 
+/* ===== Toolbar FLUTUANTE da fala selecionada (A− A+ · setas · ⊕) ===== */
+#float-tools {
+  position: absolute;
+  z-index: 12;
+  display: none;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 8px;
+  background: rgba(13, 17, 22, 0.94);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+}
+#float-tools button {
+  border: 0;
+  border-radius: 6px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+#float-tools button:hover { background: var(--surface-2); }
+#float-tools .ft-sep { width: 1px; height: 16px; background: var(--panel-border); margin: 0 2px; }
+body.reading-mode #float-tools { display: none !important; }
+
 /* ===== Tipos de caixa: cor da borda no editor ===== */
 .translation-box.type-fala { border-color: rgba(45, 212, 191, 0.9); }
 .translation-box.type-narracao { border-color: #60a5fa; }

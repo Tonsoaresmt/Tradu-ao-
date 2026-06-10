@@ -350,6 +350,7 @@ export function renderBoxes() {
 
   // Agora que os balões estão no DOM, ajusta a fonte pelo tamanho real de cada um.
   refitBoxFonts();
+  positionFloatTools();
 }
 
 export function renderCurrentPage() {
@@ -453,6 +454,7 @@ export function applyZoom() {
   }
   refitBoxFonts();
   if (elements.zoomLabel) elements.zoomLabel.textContent = `${Math.round(z * 100)}%`;
+  positionFloatTools();
 }
 
 export function selectBox(id) {
@@ -465,6 +467,7 @@ export function selectBox(id) {
   if (id && elements.reviewDetails) elements.reviewDetails.open = true;
   renderTranslationList();
   syncBoxForm();
+  positionFloatTools();
 }
 
 export function addBox(values = {}) {
@@ -560,3 +563,104 @@ export function handlePointerUp(event) {
 
   state.drag = null;
 }
+
+// ===== Ações rápidas da fala selecionada (teclado, toolbar flutuante, roda) =====
+
+// Move a fala selecionada sem recriar o DOM (rápido p/ segurar tecla/botão).
+export function nudgeSelectedBox(dx, dy) {
+  const box = getSelectedBox();
+  if (!box) return false;
+  box.x = clamp(box.x + dx, 0, 1 - box.width);
+  box.y = clamp(box.y + dy, 0, 1 - box.height);
+  const node = elements.boxLayer.querySelector(`.translation-box[data-id="${box.id}"]`);
+  if (node) { node.style.left = `${box.x * 100}%`; node.style.top = `${box.y * 100}%`; }
+  if (elements.boxX) elements.boxX.value = (box.x * 100).toFixed(1);
+  if (elements.boxY) elements.boxY.value = (box.y * 100).toFixed(1);
+  positionFloatTools();
+  return true;
+}
+
+// Fonte da fala selecionada −/+ : parte do tamanho ATUAL (auto ou manual) e trava.
+export function adjustSelectedFont(delta) {
+  const box = getSelectedBox();
+  if (!box) return false;
+  let base = box.fontLocked ? Number(box.fontSize) || 0 : 0;
+  if (!base) {
+    const inline = elements.boxLayer.querySelector(".translation-box.selected .box-input");
+    const scale = (elements.pageImage.clientHeight || 1) / (elements.pageImage.naturalHeight || 1);
+    const px = inline ? parseFloat(getComputedStyle(inline).fontSize) : 18;
+    base = Math.round(px / (scale || 1)) || 18;
+  }
+  const size = clamp(base + delta, 8, 160);
+  updateSelectedBox({ fontSize: size, fontLocked: true });
+  if (elements.fontSize) elements.fontSize.value = size;
+  return true;
+}
+
+// ===== Toolbar FLUTUANTE junto do balão selecionado (A− A+ · setas · ⊕) =====
+let _floatTools = null;
+function ensureFloatTools() {
+  const canvas = elements.pageImage?.parentElement;   // .page-canvas
+  if (!canvas) return null;
+  if (_floatTools && _floatTools.parentElement === canvas) return _floatTools;
+  _floatTools = document.createElement("div");
+  _floatTools.id = "float-tools";
+  _floatTools.innerHTML = [
+    '<button type="button" data-act="font-" title="Diminuir fonte (Q · roda do mouse)">A−</button>',
+    '<button type="button" data-act="font+" title="Aumentar fonte (E · roda do mouse)">A+</button>',
+    '<span class="ft-sep"></span>',
+    '<button type="button" data-act="left" title="Mover p/ esquerda (A · Shift = rápido)">←</button>',
+    '<button type="button" data-act="up" title="Mover p/ cima (W)">↑</button>',
+    '<button type="button" data-act="down" title="Mover p/ baixo (S)">↓</button>',
+    '<button type="button" data-act="right" title="Mover p/ direita (D)">→</button>',
+    '<span class="ft-sep"></span>',
+    '<button type="button" data-act="center" title="Re-centralizar os balões da página (R)">⊕</button>'
+  ].join("");
+  // Não deixa o clique virar "desenhar caixa nova" nem roubar a seleção.
+  _floatTools.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); });
+  _floatTools.addEventListener("click", (e) => {
+    const act = e.target?.dataset?.act;
+    if (!act) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const step = e.shiftKey ? 0.02 : 0.006;
+    if (act === "font-") adjustSelectedFont(-1);
+    else if (act === "font+") adjustSelectedFont(1);
+    else if (act === "left") nudgeSelectedBox(-step, 0);
+    else if (act === "up") nudgeSelectedBox(0, -step);
+    else if (act === "down") nudgeSelectedBox(0, step);
+    else if (act === "right") nudgeSelectedBox(step, 0);
+    else if (act === "center") { renderCurrentPage(); setToolStatus("Balões re-centralizados nesta página."); }
+  });
+  canvas.appendChild(_floatTools);
+  return _floatTools;
+}
+
+export function positionFloatTools() {
+  const tools = ensureFloatTools();
+  if (!tools) return;
+  const node = elements.boxLayer?.querySelector(".translation-box.selected");
+  if (!node) { tools.style.display = "none"; return; }
+  tools.style.display = "flex";
+  const w = tools.offsetWidth || 230;
+  const h = tools.offsetHeight || 34;
+  let left = node.offsetLeft + node.offsetWidth / 2 - w / 2;
+  let top = node.offsetTop - h - 8;
+  if (top < 2) top = node.offsetTop + node.offsetHeight + 8;   // sem espaço em cima: vai pra baixo
+  const canvas = elements.pageImage?.parentElement;
+  const maxLeft = (canvas?.clientWidth || 0) - w - 2;
+  left = Math.max(2, Math.min(left, Math.max(2, maxLeft)));
+  tools.style.left = `${left}px`;
+  tools.style.top = `${top}px`;
+}
+
+// ===== Roda do mouse SOBRE o balão = fonte (Ctrl = fino, Shift = rápido) =====
+elements.boxLayer?.addEventListener("wheel", (event) => {
+  const node = event.target?.closest?.(".translation-box");
+  if (!node) return;                       // fora de balão: rolagem normal da página
+  event.preventDefault();                  // sobre o balão: a roda vira controle de fonte
+  if (node.dataset.id !== state.selectedBoxId) selectBox(node.dataset.id);
+  const dir = event.deltaY < 0 ? 1 : -1;
+  const step = event.ctrlKey ? 1 : event.shiftKey ? 4 : 2;
+  adjustSelectedFont(dir * step);
+}, { passive: false });
