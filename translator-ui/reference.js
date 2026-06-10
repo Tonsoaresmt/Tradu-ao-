@@ -28,10 +28,20 @@ export async function refreshReferenceInfo() {
     setRefStatus(`${manga}: ${ref}${perfil}`);
     // Relatório de aprendizado: mostra O QUE a IA destilou da referência.
     if (elements.profileDetails && elements.profileText) {
-      if (data.profile) {
-        const quando = data.learnedAt ? new Date(data.learnedAt).toLocaleString("pt-BR") : "—";
-        elements.profileText.textContent =
-          `${data.profile}\n\n— Aprendido de ${data.learnedPages} página(s) · ${data.learnedFalas || "?"} fala(s) lida(s) · ${quando}`;
+      const temVisual = data.visual && data.visual.fontFrac;
+      if (data.profile || temVisual) {
+        const partes = [];
+        if (data.profile) partes.push(data.profile);
+        if (temVisual) {
+          const pctFonte = (data.visual.fontFrac * 100).toFixed(1);
+          const pctEnche = data.visual.fillMedian ? `${Math.round(data.visual.fillMedian * 100)}%` : "—";
+          partes.push(`Estilo visual aprendido (de ${data.visual.pages} pág.): fonte típica ≈ ${pctFonte}% da altura da página · preenchimento ≈ ${pctEnche}.`);
+        }
+        if (data.profile) {
+          const quando = data.learnedAt ? new Date(data.learnedAt).toLocaleString("pt-BR") : "—";
+          partes.push(`— Aprendido de ${data.learnedPages} página(s) · ${data.learnedFalas || "?"} fala(s) lida(s) · ${quando}`);
+        }
+        elements.profileText.textContent = partes.join("\n\n");
         elements.profileDetails.hidden = false;
       } else {
         elements.profileDetails.hidden = true;

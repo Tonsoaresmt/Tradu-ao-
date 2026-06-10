@@ -952,6 +952,36 @@ async function styleForManga(manga) {
   return [globalStyle, own].filter(Boolean).join("\n\n");
 }
 
+// MEMÓRIA VISUAL por obra: padrão de lettering (fração da fonte vs altura da
+// página, ocupação) medido nos renders e reusado como ponto de partida — "da
+// próxima vez já nasce próximo do correto". Fica junto do estilo, em estilos-obras.json.
+async function visualHintForManga(manga) {
+  if (!manga) return null;
+  const styles = await loadObraStyles();
+  const entry = Object.entries(styles).find(([key]) => memoryKey(key) === memoryKey(manga));
+  const v = entry?.[1]?.visual;
+  return v && v.fontFrac ? { fontFrac: v.fontFrac } : null;
+}
+
+// Atualiza (média móvel suave) a memória visual da obra com o que o export mediu.
+async function recordVisualForManga(manga, visual) {
+  if (!manga || !visual || !visual.fontFrac) return;
+  const styles = await loadObraStyles();
+  const key = Object.keys(styles).find((k) => memoryKey(k) === memoryKey(manga)) || manga;
+  const prev = styles[key]?.visual;
+  const blend = (a, b) => (a ? a * 0.6 + b * 0.4 : b);   // suaviza entre exportações
+  styles[key] = {
+    ...(styles[key] || {}),
+    visual: {
+      fontFrac: Number(blend(prev?.fontFrac, visual.fontFrac).toFixed(5)),
+      fillMedian: Number(blend(prev?.fillMedian, visual.fillMedian || 0).toFixed(3)),
+      pages: (prev?.pages || 0) + (visual.pages || 0),
+      atualizadoEm: new Date().toISOString()
+    }
+  };
+  await fs.writeJson(TRAINING_STYLES_PATH, styles, { spaces: 2 }).catch(() => {});
+}
+
 function referenceDir(manga) {
   const safe = String(manga || "").replace(/[<>:"/\\|?*]/g, "_").trim();
   return path.join(REFERENCES_DIR, safe || "_sem-nome");
@@ -2075,8 +2105,12 @@ const server = http.createServer(async (req, res) => {
         pages,
         outputDir: dir,
         cbzPath: format === "cbz" ? cbz : null,
-        font: process.env.RENDER_FONT || undefined
+        font: process.env.RENDER_FONT || undefined,
+        styleHint: await visualHintForManga(manga)   // memoria visual da obra
       });
+
+      // Aprende/atualiza a memoria visual da obra com o que ESTE export mediu.
+      if (result.visual) await recordVisualForManga(manga, result.visual);
 
       sendJson(res, 200, {
         ok: true,
@@ -2086,7 +2120,8 @@ const server = http.createServer(async (req, res) => {
         boxesRendered: result.boxesRendered,
         font: result.font,
         qcOk: result.qcOk !== false,
-        qcIssues: result.qcIssues || []
+        qcIssues: result.qcIssues || [],
+        visual: result.visual || null
       });
       return;
     }
@@ -2114,7 +2149,8 @@ const server = http.createServer(async (req, res) => {
         imagePath,
         boxes,
         typeset: body.typeset !== false,   // false = so inpaint (fundo do editor)
-        font: process.env.RENDER_FONT || undefined
+        font: process.env.RENDER_FONT || undefined,
+        styleHint: await visualHintForManga(manga)   // memoria visual da obra
       });
       sendJson(res, 200, {
         ok: true,
@@ -2200,13 +2236,17 @@ const server = http.createServer(async (req, res) => {
       const pages = (await fs.pathExists(dir)) ? await collectImageFiles(dir).catch(() => []) : [];
       const styles = await loadObraStyles();
       const entry = Object.entries(styles).find(([key]) => memoryKey(key) === memoryKey(manga));
+      const vis = entry?.[1]?.visual;
       sendJson(res, 200, {
         ok: true,
         pages: pages.length,
         profile: entry?.[1]?.perfil || "",
         learnedPages: entry?.[1]?.paginas || 0,
         learnedFalas: entry?.[1]?.falas || 0,
-        learnedAt: entry?.[1]?.atualizadoEm || null
+        learnedAt: entry?.[1]?.atualizadoEm || null,
+        visual: vis && vis.fontFrac
+          ? { fontFrac: vis.fontFrac, fillMedian: vis.fillMedian || 0, pages: vis.pages || 0 }
+          : null
       });
       return;
     }

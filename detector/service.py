@@ -542,7 +542,11 @@ def bubble_inner_rect(crop_bgr):
     return cv2.boundingRect(c)
 
 
-def render_image(image_path, boxes, font_path, typeset=True):
+def render_image(image_path, boxes, font_path, typeset=True, style_hint=None):
+    # style_hint (memoria visual da obra): {"fontFrac": 0.024} = fracao tipica do
+    # tamanho de fonte de balao em relacao a ALTURA da pagina. Vira PISO do alvo
+    # quando a pagina tem poucos baloes mensuraveis (senao 1 balao gigante define
+    # tudo). Quem manda continua sendo: manual > original medido > hint/uniform.
     import numpy as np
     import cv2
     from PIL import Image, ImageDraw
@@ -691,6 +695,20 @@ def render_image(image_path, boxes, font_path, typeset=True):
     if len([s for s in sizes if s]) >= 2:
         ss = sorted(s for s in sizes if s)
         uniform = ss[int(len(ss) * 0.35)]
+    # MEMORIA VISUAL da obra: quando a pagina tem poucos baloes (<2 medidos), o
+    # 'uniform' nao existe; usa a fonte tipica APRENDIDA da obra como alvo. Mesmo
+    # com uniform, garante um PISO (nunca menor que ~85% do tipico da obra).
+    hint_font = 0
+    try:
+        if style_hint and float(style_hint.get("fontFrac", 0)) > 0:
+            hint_font = int(round(float(style_hint["fontFrac"]) * H))
+    except Exception:
+        hint_font = 0
+    if hint_font:
+        uniform = max(uniform or 0, int(hint_font * 0.85)) if uniform else hint_font
+
+    used_sizes = []   # fontes realmente desenhadas nos baloes -> stats da pagina
+    used_fills = []   # ocupacao (altura do texto / altura util) por balao
 
     # --- Pass 2: desenha (baloes no tamanho uniforme; resto no seu encaixe) ---
     for it in items:
@@ -720,6 +738,13 @@ def render_image(image_path, boxes, font_path, typeset=True):
         if uniform and is_bubble and not manual:
             cap = int(max(uniform * 0.8, min(cap, uniform * 1.4)))
             cap = max(min_font, min(cap, max_font))
+
+        # MEMORIA VISUAL da obra: o lettering do ORIGINAL (EN) costuma ser MENOR
+        # que o tipico da obra (ex.: Komi). Se a obra aprendeu uma fonte maior,
+        # ela vira PISO do alvo (so balao, so automatico) — o fit_text encolhe se
+        # nao couber, entao elevar o teto nunca estoura o balao.
+        if hint_font and is_bubble and not manual:
+            cap = max(cap, min(hint_font, max_font))
 
         # Encaixe RETANGULAR centralizado (caixa de dialogo) — sem forcar oval.
         method = "rect"
@@ -763,6 +788,11 @@ def render_image(image_path, boxes, font_path, typeset=True):
         draw.multiline_text((tx, ty), wrapped, font=font, fill="black",
                             align="center", spacing=spacing, stroke_width=sw, stroke_fill=stroke_fill)
         rendered += 1
+        # estatistica visual da pagina (so baloes de fala -> memoria de estilo da obra)
+        if is_bubble and fsize:
+            used_sizes.append(fsize)
+            if ah:
+                used_fills.append(min(1.0, th / float(ah)))
 
         # ---- QC: confere se ficou no padrao (REVISOR FINAL geometrico) ----
         problems = []
@@ -779,19 +809,29 @@ def render_image(image_path, boxes, font_path, typeset=True):
         if problems:
             issues.append({"box": box.get("order") or rendered, "type": btype, "problems": problems})
 
-    return out, rendered, issues
+    # Estatistica visual da PAGINA (mediana) -> o export agrega por obra.
+    def _median(xs):
+        xs = sorted(xs)
+        return xs[len(xs) // 2] if xs else 0
+    stats = {
+        "bubbleCount": len(used_sizes),
+        "fontMedian": _median(used_sizes),
+        "fontFrac": (_median(used_sizes) / float(H)) if used_sizes else 0,
+        "fillMedian": _median(used_fills),
+    }
+    return out, rendered, issues, stats
 
 
-def render_page(image_path, boxes, out_path, font_path):
-    out, rendered, issues = render_image(image_path, boxes, font_path)
+def render_page(image_path, boxes, out_path, font_path, style_hint=None):
+    out, rendered, issues, stats = render_image(image_path, boxes, font_path, style_hint=style_hint)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     out.save(out_path)
-    return rendered, issues
+    return rendered, issues, stats
 
 
-def render_png_bytes(image_path, boxes, font_path, typeset=True):
+def render_png_bytes(image_path, boxes, font_path, typeset=True, style_hint=None):
     import io
-    out, rendered, issues = render_image(image_path, boxes, font_path, typeset=typeset)
+    out, rendered, issues, _stats = render_image(image_path, boxes, font_path, typeset=typeset, style_hint=style_hint)
     buf = io.BytesIO()
     out.save(buf, "PNG")
     return buf.getvalue(), rendered, issues
@@ -882,24 +922,37 @@ class Handler(BaseHTTPRequestHandler):
             output_dir = body.get("outputDir", "")
             cbz_path = body.get("cbzPath") or None
             font_path = body.get("font") or find_font()
+            style_hint = body.get("styleHint") or None   # memoria visual da obra
             if not pages or not output_dir:
                 self._send(400, {"error": "pages e outputDir sao obrigatorios"})
                 return
             written = []
             total_boxes = 0
             qc = []   # verificacao: baloes que NAO ficaram no padrao
+            agg_fracs = []   # fracoes de fonte (por pagina) -> memoria visual atualizada
+            agg_fills = []
             for page in pages:
                 image_path = page.get("imagePath", "")
                 if not image_path or not os.path.exists(image_path):
                     continue
                 out_name = page.get("outName") or (os.path.splitext(os.path.basename(image_path))[0] + ".png")
                 out_path = os.path.join(output_dir, out_name)
-                rendered, issues = render_page(image_path, page.get("boxes", []), out_path, font_path)
+                rendered, issues, stats = render_page(image_path, page.get("boxes", []), out_path, font_path, style_hint=style_hint)
                 total_boxes += rendered
                 for it in issues:
                     qc.append({"page": out_name, **it})
+                if stats.get("fontFrac"):
+                    agg_fracs.append(stats["fontFrac"])
+                if stats.get("fillMedian"):
+                    agg_fills.append(stats["fillMedian"])
                 written.append(out_path)
             cbz_out = pack_cbz(written, cbz_path) if (cbz_path and written) else None
+            agg_fracs.sort(); agg_fills.sort()
+            visual = {
+                "fontFrac": (agg_fracs[len(agg_fracs) // 2] if agg_fracs else 0),
+                "fillMedian": (agg_fills[len(agg_fills) // 2] if agg_fills else 0),
+                "pages": len(agg_fracs),
+            }
             self._send(200, {
                 "ok": True,
                 "pages": len(written),
@@ -909,6 +962,7 @@ class Handler(BaseHTTPRequestHandler):
                 "font": font_path,
                 "qcIssues": qc,
                 "qcOk": len(qc) == 0,
+                "visual": visual,   # padrao visual medido nesta exportacao
             })
         except Exception as e:
             log("erro no /export:\n" + traceback.format_exc())
@@ -924,14 +978,15 @@ class Handler(BaseHTTPRequestHandler):
             typeset = body.get("typeset", True)
             boxes = body.get("boxes", [])
             font_path = body.get("font") or find_font()
+            style_hint = body.get("styleHint") or None
             # Modo "so QC": roda o render p/ obter o veredito SEM gerar/transmitir
             # o PNG (rapido nas iteracoes do loop de auto-ajuste).
             if body.get("qcOnly"):
-                _out, rendered, issues = render_image(image_path, boxes, font_path, typeset=typeset)
+                _out, rendered, issues, _stats = render_image(image_path, boxes, font_path, typeset=typeset, style_hint=style_hint)
                 self._send(200, {"ok": True, "boxesRendered": rendered, "qcIssues": issues, "qcOk": len(issues) == 0})
                 return
             import base64
-            png, rendered, issues = render_png_bytes(image_path, boxes, font_path, typeset=typeset)
+            png, rendered, issues = render_png_bytes(image_path, boxes, font_path, typeset=typeset, style_hint=style_hint)
             self._send(200, {
                 "ok": True,
                 "boxesRendered": rendered,
