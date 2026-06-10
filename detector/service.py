@@ -726,6 +726,17 @@ def render_image(image_path, boxes, font_path, typeset=True):
         res = fit_text(draw, text, font_path, fw, fh,
                        min_size=min_font, max_size=cap, fill=fill)
 
+        # OCUPACAO (padrao de estudio): fala curta em balao grande ficava
+        # minuscula porque o teto vinha do tamanho medido no ORIGINAL. Se o
+        # bloco ficou ESPARSO (< 28% da altura util), deixa a fonte crescer
+        # alem do original — com limite (x1.6) pra nao destoar da pagina.
+        if res and not manual:
+            _sz = getattr(res[0], "size", 0)
+            if res[3] < 0.28 * fh and _sz and _sz < max_font:
+                boost = min(max_font, max(int(_sz * 1.6), _sz + 4))
+                res = fit_text(draw, text, font_path, fw, fh,
+                               min_size=min_font, max_size=boost, fill=fill)
+
         font, wrapped, tw, th, spacing = res
         # centraliza o bloco na area (centro visual do balao)
         tx = fx1 + (fw - tw) / 2

@@ -1193,7 +1193,10 @@ async function translateWithOllama(text, context = {}) {
     "- TRADUZA A FALA INTEIRA: não corte, não resuma, não omita partes. O tamanho da letra é ajustado sozinho depois — COMPLETO é melhor que curto.",
     "- Mantenha o REGISTRO: se o personagem xinga ou é grosseiro, use o palavrão equivalente em PT-BR (NÃO suavize).",
     "- Preserve nomes próprios, termos do glossário, ataques/técnicas e onomatopeias (SFX).",
-    "- REVISE a sua própria tradução: está natural, COMPLETA, no tom e em PT-BR do Brasil? Se não, melhore.",
+    "- RUÍDO de OCR sem palavras reais (ex.: 'LJ', 'U V U', só símbolos) e reticências '...': devolva EXATAMENTE como veio. NUNCA invente conteúdo nem descrições como '(silêncio)'.",
+    "- Hífen+espaço no MEIO de palavra é quebra de linha do OCR: junte ('WONDER- FUL'='WONDERFUL', 'Na- jimi'='Najimi'). GAGUEIRA: adapte a letra repetida à palavra PT ('Y- YEAH'='S- SIM', 'S- SORRY'='D- DESCULPA').",
+    "- GRAMÁTICA PT-BR perfeita. Pergunta de permissão usa 'POSSO ...?' ('CAN I SIT?'='POSSO SENTAR?'). Quem ignora alguém: 'ela ME ignorou'. 'GOOD MORNING'='BOM DIA' (manhã = dia; nunca 'boa manhã' nem 'tarde'). NÚMEROS: mantenha os valores exatos.",
+    "- REVISE a sua própria tradução: está natural, COMPLETA, gramatical, no tom e em PT-BR do Brasil? Se não, melhore.",
     "- Não explique nada nem adicione comentários.",
     "",
     "Responda apenas com a tradução final."
@@ -1281,7 +1284,10 @@ async function translateBatchWithOllama(texts, context = {}) {
     "- TRADUZA A FALA INTEIRA: não corte, não resuma, não omita partes. O tamanho da letra é ajustado sozinho depois — COMPLETO é melhor que curto.",
     "- Mantenha o REGISTRO: se o personagem xinga ou é grosseiro, use o palavrão equivalente em PT-BR (NÃO suavize).",
     "- Preserve nomes próprios, termos do glossário, ataques/técnicas e onomatopeias (SFX).",
-    "- REVISE a sua própria tradução: está natural, COMPLETA, no tom e em PT-BR do Brasil? Se não, melhore.",
+    "- RUÍDO de OCR sem palavras reais (ex.: 'LJ', 'U V U', só símbolos) e reticências '...': devolva EXATAMENTE como veio. NUNCA invente conteúdo nem descrições como '(silêncio)'.",
+    "- Hífen+espaço no MEIO de palavra é quebra de linha do OCR: junte ('WONDER- FUL'='WONDERFUL', 'Na- jimi'='Najimi'). GAGUEIRA: adapte a letra repetida à palavra PT ('Y- YEAH'='S- SIM', 'S- SORRY'='D- DESCULPA').",
+    "- GRAMÁTICA PT-BR perfeita. Pergunta de permissão usa 'POSSO ...?' ('CAN I SIT?'='POSSO SENTAR?'). Quem ignora alguém: 'ela ME ignorou'. 'GOOD MORNING'='BOM DIA' (manhã = dia; nunca 'boa manhã' nem 'tarde'). NÚMEROS: mantenha os valores exatos.",
+    "- REVISE a sua própria tradução: está natural, COMPLETA, gramatical, no tom e em PT-BR do Brasil? Se não, melhore.",
     "- Não explique nada nem adicione comentários.",
     "",
     "Você vai receber VÁRIAS falas numeradas. Traduza CADA uma.",
@@ -1422,6 +1428,13 @@ async function suggestTranslationsBatch(items, context = {}) {
     const value = cleanOcrText(o.originalText);
     if (!value) {
       o.result = { provider: "empty", text: "", automatic: false };
+      continue;
+    }
+    // Numero de pagina / simbolo / ruido sem palavra real ("29", "/", "Y"):
+    // nao ha o que traduzir — pula (nada de mandar pro modelo inventar).
+    const letters = (value.match(/\p{L}/gu) || []).length;
+    if (letters < 2) {
+      o.result = { provider: "skip", text: "", automatic: false };
       continue;
     }
     const memory = await findTranslationMemory(value);
