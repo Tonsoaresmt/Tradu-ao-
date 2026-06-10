@@ -440,8 +440,9 @@ export function renderSystemStatus() {
 
 export function applyZoom() {
   const z = state.zoom || 1;
-  const stage = elements.viewerStage;
-  if (!stage) return;
+  // Usa o palco VISÍVEL (aba Original esconde o de tradução e vice-versa).
+  const stage = elements.viewerStage?.clientHeight ? elements.viewerStage : elements.origStage;
+  if (!stage || !stage.clientHeight) return;
   const h = Math.max(120, stage.clientHeight - 16);
   for (const img of [elements.pageImage, elements.pageImageOriginal]) {
     if (!img || !img.getAttribute("src")) continue;

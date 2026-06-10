@@ -36,7 +36,7 @@ textarea {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: 250px minmax(0, 1fr) 330px;
   min-height: 100vh;
 }
 
@@ -679,31 +679,25 @@ body { height: 100vh; overflow: hidden; }
 .app-shell { height: 100vh; overflow: hidden; }
 .sidebar { overflow-y: auto; }
 .workspace { height: 100vh; overflow: hidden; gap: 12px; padding: 14px; }
-.dual-view { flex: 1; min-height: 0; }
-.page-pane { min-height: 0; }
-.page-pane .viewer-stage {
-  height: 100%;
-  min-height: 0;
-  max-height: none;
-  overflow: auto;            /* scroll interno apenas quando dá zoom */
-  align-items: center;
-}
-.bottom-strip { max-height: 36vh; }
-.strip-col { overflow: auto; }
+.stage-area { flex: 1; min-height: 0; }
+.pages-strip { flex: 0 0 auto; }
 /* o JS define a altura da imagem conforme o zoom; aqui so exibe */
 .viewer-stage.ready #page-image,
 .viewer-stage.ready #page-image-original { display: block; }
 .zoom-controls { display: inline-flex; align-items: center; gap: 6px; }
 .zoom-controls #zoom-label { min-width: 42px; text-align: center; }
 
-/* ===== Modo leitura: esconde bordas/IDs/painel auxiliar, mostra só o resultado ===== */
-body.reading-mode .page-pane.original-pane { display: none; }
-body.reading-mode .dual-view { grid-template-columns: 1fr; }
-body.reading-mode .pane-label,
+/* ===== Modo REVISÃO: esconde quase toda a interface, só a página (Espaço) ===== */
+body.reading-mode .app-shell { grid-template-columns: 1fr; }
+body.reading-mode .sidebar,
+body.reading-mode .fala-panel,
+body.reading-mode .toolbar,
+body.reading-mode .pages-strip,
 body.reading-mode .box-handle { display: none; }
 body.reading-mode .translation-box {
   border-color: transparent;
   box-shadow: none;
+  background: rgba(255, 255, 255, 0.97);
 }
 body.reading-mode .box-input { cursor: default; }
 
@@ -762,35 +756,47 @@ body:not(.advanced) .toolbar { display: none; }
 .toolbar .ghost-select { padding: 7px 12px; font-size: 0.85rem; }
 .status.grow { flex: 1; min-width: 160px; background: transparent; padding: 4px 0; }
 
-.dual-view {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  min-height: 0;
-}
-.page-pane {
+/* ===== Bancada: UMA página grande, abas escolhem o que ela mostra ===== */
+.stage-area {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
   min-width: 0;
 }
-.pane-label {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.page-pane .viewer-stage {
-  height: calc(100vh - 230px);
+.stage-area .viewer-stage {
+  flex: 1;
+  height: 100%;
   min-height: 340px;
   max-height: none;
   padding: 8px;
   overflow: auto;            /* página inteira no fit; rola quando dá zoom */
   align-items: flex-start;   /* topo: permite rolar até o topo da imagem ampliada */
+  justify-content: center;
   background: #0a0d11;
   border: 1px solid var(--panel-border);
 }
+/* Abas: Original | Dublado (a área grande mostra UMA por vez) */
+body.view-original #viewer-stage { display: none; }
+body:not(.view-original) #orig-stage { display: none; }
+
+.view-tabs {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+.view-tab {
+  border: 0;
+  border-radius: 5px;
+  padding: 7px 12px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.view-tab.on { background: var(--accent); color: #04201d; }
+.view-tab:hover:not(.on) { background: var(--surface-2); color: var(--ink); }
 /* a página inteira cabe na altura do painel */
 .viewer-stage.ready #page-image,
 .viewer-stage.ready #page-image-original {
@@ -811,32 +817,60 @@ body:not(.advanced) .toolbar { display: none; }
 }
 .viewer-stage.ready #page-image-original { display: block; }
 
-.bottom-strip {
-  display: grid;
-  grid-template-columns: 1fr 1.25fr;
-  gap: 14px;
-}
-.strip-col {
+/* ===== Faixa fina de páginas (uma linha, rola na horizontal) ===== */
+.pages-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-lg);
+  padding: 8px 12px;
+  min-width: 0;
+}
+.pages-strip h3 { margin: 0; font-size: 0.9rem; white-space: nowrap; }
+.pages-strip #page-source { white-space: nowrap; }
+.page-list.horizontal {
+  flex: 1;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px;
+}
+.page-list.horizontal .page-button { width: auto; padding: 6px 10px; white-space: nowrap; flex: 0 0 auto; }
+
+.strip-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.strip-head h3 { margin: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
+
+/* ===== Painel FIXO da fala (coluna direita): tudo à mão, sem rolar a tela ===== */
+.fala-panel {
+  background: #12161c;
+  border-left: 1px solid var(--panel-border);
   padding: 14px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  height: 100vh;
+  overflow-y: auto;
   min-width: 0;
 }
-.strip-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.strip-head h3 { margin: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
-.page-list.horizontal {
-  flex-direction: row;
-  flex-wrap: wrap;
-  max-height: 116px;
-}
-.page-list.horizontal .page-button { width: auto; padding: 6px 10px; }
+.fala-panel .fala-chips { max-height: 96px; flex: 0 0 auto; }
+.fala-panel .compare-grid { grid-template-columns: 1fr; gap: 8px; }
+.fala-panel .status { padding: 6px 10px; font-size: 0.85rem; }
+.fala-panel textarea { resize: vertical; }
+.fala-panel .option-grid { grid-template-columns: 1fr 1fr; }
+.fala-panel .check-option { grid-column: 1 / -1; }
+.atalhos-panel { margin-top: auto; }
+.atalhos-grid { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; line-height: 1.35; }
+.atalhos-grid b { color: var(--ink); font-weight: 700; }
 
+@media (max-width: 1280px) {
+  .app-shell { grid-template-columns: 220px minmax(0, 1fr) 300px; }
+}
 @media (max-width: 1100px) {
-  .dual-view,
-  .bottom-strip { grid-template-columns: 1fr; }
+  .app-shell { grid-template-columns: 1fr; }
+  .fala-panel { height: auto; border-left: 0; }
 }
 

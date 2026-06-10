@@ -38,15 +38,22 @@
           <div class="workspace-actions">
             <span id="autosave-indicator" class="muted small autosave"></span>
             <span id="page-counter" class="pill">0 / 0</span>
-            <button id="prev-page" class="icon-button" type="button" title="Página anterior">‹</button>
-            <button id="next-page" class="icon-button" type="button" title="Próxima página">›</button>
-            <span class="zoom-controls">
-              <button id="zoom-out" class="ghost-button small" type="button" title="Diminuir zoom">−</button>
-              <span id="zoom-label" class="muted small">100%</span>
-              <button id="zoom-in" class="ghost-button small" type="button" title="Aumentar zoom">+</button>
-              <button id="zoom-fit" class="ghost-button small" type="button" title="Ajustar à tela">Ajustar</button>
+            <button id="prev-page" class="icon-button" type="button" title="Página anterior (PageUp)">‹</button>
+            <button id="next-page" class="icon-button" type="button" title="Próxima página (PageDown)">›</button>
+            <span class="view-tabs" title="O que a página grande mostra">
+              <button id="view-original" class="view-tab" type="button" title="Página original">Original</button>
+              <button id="view-dublado" class="view-tab on" type="button" title="Página traduzida (edição)">Dublado</button>
+              <button id="view-comparar" class="view-tab" type="button" title="Alterna rápido Original ↔ Dublado">Comparar</button>
             </span>
-            <button id="reading-mode" class="ghost-button" type="button" title="Esconder bordas e ver só o resultado">Leitura</button>
+            <span class="zoom-controls">
+              <button id="zoom-out" class="ghost-button small" type="button" title="Diminuir zoom (V)">−</button>
+              <span id="zoom-label" class="muted small">100%</span>
+              <button id="zoom-in" class="ghost-button small" type="button" title="Aumentar zoom (C)">+</button>
+              <button id="zoom-fit" class="ghost-button small" type="button" title="Página inteira na altura (Z)">Altura</button>
+              <button id="zoom-fit-w" class="ghost-button small" type="button" title="Página na largura da área">Largura</button>
+              <button id="zoom-100" class="ghost-button small" type="button" title="Tamanho real do arquivo (X)">100%</button>
+            </span>
+            <button id="reading-mode" class="ghost-button" type="button" title="Modo Revisão: só a página, sem distrações (Espaço)">Revisão</button>
             <button id="export-chapter" class="primary-button" type="button" title="Inpaint + typeset + CBZ">Gerar CBZ</button>
             <button id="toggle-advanced" class="ghost-button" type="button" title="Mostrar/ocultar ferramentas avançadas">⚙</button>
           </div>
@@ -67,7 +74,7 @@
           <button id="accept-confident" class="ghost-button" type="button" title="Aceitar sugestões com confiança ≥90% no capítulo">Aceitar ≥90%</button>
           <button id="add-line" class="ghost-button" type="button">+ Caixa</button>
           <button id="auto-organize" class="ghost-button" type="button" title="Redetecta os balões e reposiciona, mantendo as traduções">Auto Organizar</button>
-          <button id="center-boxes" class="ghost-button" type="button" title="Força a centralização do texto nos balões desta página">Centralizar</button>
+          <button id="center-boxes" class="ghost-button" type="button" title="Força a centralização do texto nos balões desta página (R)">Centralizar</button>
           <button id="preview-page" class="ghost-button" type="button" title="Renderizar a página (inpaint + typeset)">Prévia</button>
           <button id="review-page" class="ghost-button" type="button" title="Revisor: o modelo MAIOR (9b) revisa e corrige a tradução desta página">Revisar (9b)</button>
           <button id="retranslate-page" class="ghost-button" type="button" title="Apaga e re-traduz esta página do zero (substitui as edições desta página)">Re-traduzir</button>
@@ -76,95 +83,97 @@
           <span id="tool-status" class="status grow">Abra uma página para começar.</span>
         </div>
 
-        <section class="dual-view">
-          <div class="page-pane original-pane">
-            <div class="pane-label">Original</div>
-            <div id="orig-stage" class="viewer-stage empty">
-              <div class="page-canvas">
-                <img id="page-image-original" alt="Página original">
-              </div>
+        <section class="stage-area">
+          <div id="orig-stage" class="viewer-stage empty">
+            <div class="page-canvas">
+              <img id="page-image-original" alt="Página original">
             </div>
           </div>
-          <div class="page-pane">
-            <div class="pane-label">Tradução <span class="muted small">— clique num balão e digite · Alt+setas movem a fala</span></div>
-            <div id="viewer-stage" class="viewer-stage empty">
-              <div class="page-canvas">
-                <img id="page-image" alt="Página traduzida">
-                <div id="box-layer" class="box-layer"></div>
-              </div>
+          <div id="viewer-stage" class="viewer-stage empty">
+            <div class="page-canvas">
+              <img id="page-image" alt="Página traduzida">
+              <div id="box-layer" class="box-layer"></div>
             </div>
           </div>
         </section>
 
-        <section class="bottom-strip">
-          <div class="strip-col pages-col">
-            <div class="strip-head">
-              <h3>Páginas</h3>
-              <span id="page-source" class="muted small">Aguardando capítulo.</span>
-            </div>
-            <div id="page-list" class="page-list horizontal"></div>
-          </div>
-
-          <div class="strip-col falas-col">
-            <div class="strip-head">
-              <h3>Falas <span id="line-counter" class="pill">0</span></h3>
-              <button id="remove-box" class="ghost-button danger small" type="button" disabled>Remover</button>
-            </div>
-            <div id="page-meta" class="status">Selecione um capítulo.</div>
-            <div id="translation-list" class="fala-chips"></div>
-
-            <details id="review-details" class="details-panel">
-              <summary id="review-title">Detalhes da fala</summary>
-              <form id="box-form" class="box-form">
-                <div class="compare-grid">
-                  <label class="ref-field">
-                    <span class="field-label">
-                      Original (detectado) <span id="original-conf" class="conf-badge"></span>
-                      <button id="copy-original-one" class="ghost-button tiny" type="button" title="Copiar o texto original">copiar</button>
-                    </span>
-                    <textarea id="original-text" rows="4" readonly placeholder="—"></textarea>
-                  </label>
-                  <label class="final-field">
-                    <span class="field-label">
-                      <strong>Tradução (PT-BR)</strong>
-                      <button id="copy-translated-one" class="ghost-button tiny" type="button" title="Copiar a tradução">copiar</button>
-                    </span>
-                    <textarea id="translated-text" rows="4" placeholder="Digite a tradução em PT-BR"></textarea>
-                  </label>
-                </div>
-                <div class="suggestion-row">
-                  <span id="suggested-preview" class="muted small">Sem sugestão ainda.</span>
-                  <button id="use-suggestion" class="ghost-button small" type="button" disabled>Usar sugestão</button>
-                </div>
-                <details class="details-panel inner-adv">
-                  <summary>Ajustes (tipo, fonte, posição)</summary>
-                  <label class="type-field">
-                    <span class="field-label">Tipo da caixa</span>
-                    <select id="box-type" class="ghost-select">
-                      <option value="fala">Fala (balão)</option>
-                      <option value="narracao">Narração (caixa)</option>
-                      <option value="pensamento">Pensamento</option>
-                      <option value="grito">Grito</option>
-                      <option value="sfx">SFX / onomatopeia (não cobre a arte)</option>
-                    </select>
-                  </label>
-                  <div class="option-grid">
-                    <label class="check-option"><input id="cover-original" type="checkbox" checked> Cobrir original</label>
-                    <label>Fonte <input id="font-size" type="number" min="8" max="72" step="1" value="18"></label>
-                    <label>Grossura <input id="font-weight" type="number" min="0" max="6" step="1" value="0"></label>
-                  </div>
-                  <div class="coord-grid">
-                    <label>X (%)<input id="box-x" type="number" min="0" max="100" step="0.1"></label>
-                    <label>Y (%)<input id="box-y" type="number" min="0" max="100" step="0.1"></label>
-                    <label>Larg (%)<input id="box-width" type="number" min="1" max="100" step="0.1"></label>
-                    <label>Alt (%)<input id="box-height" type="number" min="1" max="100" step="0.1"></label>
-                  </div>
-                </details>
-              </form>
-            </details>
-          </div>
+        <section class="pages-strip">
+          <h3>Páginas</h3>
+          <span id="page-source" class="muted small">Aguardando capítulo.</span>
+          <div id="page-list" class="page-list horizontal"></div>
         </section>
       </main>
+
+      <aside class="fala-panel">
+        <div class="strip-head">
+          <h3>Falas <span id="line-counter" class="pill">0</span></h3>
+          <button id="remove-box" class="ghost-button danger small" type="button" disabled>Remover</button>
+        </div>
+        <div id="page-meta" class="status">Selecione um capítulo.</div>
+        <div id="translation-list" class="fala-chips"></div>
+
+        <details id="review-details" class="details-panel" open>
+          <summary id="review-title">Detalhes da fala</summary>
+          <form id="box-form" class="box-form">
+            <div class="compare-grid">
+              <label class="ref-field">
+                <span class="field-label">
+                  Original (detectado) <span id="original-conf" class="conf-badge"></span>
+                  <button id="copy-original-one" class="ghost-button tiny" type="button" title="Copiar o texto original">copiar</button>
+                </span>
+                <textarea id="original-text" rows="3" readonly placeholder="—"></textarea>
+              </label>
+              <label class="final-field">
+                <span class="field-label">
+                  <strong>Tradução (PT-BR)</strong>
+                  <button id="copy-translated-one" class="ghost-button tiny" type="button" title="Copiar a tradução">copiar</button>
+                </span>
+                <textarea id="translated-text" rows="3" placeholder="Digite a tradução em PT-BR"></textarea>
+              </label>
+            </div>
+            <div class="suggestion-row">
+              <span id="suggested-preview" class="muted small">Sem sugestão ainda.</span>
+              <button id="use-suggestion" class="ghost-button small" type="button" disabled>Usar sugestão</button>
+            </div>
+            <details class="details-panel inner-adv" open>
+              <summary>Ajustes (tipo, fonte, posição)</summary>
+              <label class="type-field">
+                <span class="field-label">Tipo da caixa</span>
+                <select id="box-type" class="ghost-select">
+                  <option value="fala">Fala (balão)</option>
+                  <option value="narracao">Narração (caixa)</option>
+                  <option value="pensamento">Pensamento</option>
+                  <option value="grito">Grito</option>
+                  <option value="sfx">SFX / onomatopeia (não cobre a arte)</option>
+                </select>
+              </label>
+              <div class="option-grid">
+                <label class="check-option"><input id="cover-original" type="checkbox" checked> Cobrir original</label>
+                <label>Fonte <input id="font-size" type="number" min="8" max="72" step="1" value="18"></label>
+                <label>Grossura <input id="font-weight" type="number" min="0" max="6" step="1" value="0"></label>
+              </div>
+              <div class="coord-grid">
+                <label>X (%)<input id="box-x" type="number" min="0" max="100" step="0.1"></label>
+                <label>Y (%)<input id="box-y" type="number" min="0" max="100" step="0.1"></label>
+                <label>Larg (%)<input id="box-width" type="number" min="1" max="100" step="0.1"></label>
+                <label>Alt (%)<input id="box-height" type="number" min="1" max="100" step="0.1"></label>
+              </div>
+            </details>
+          </form>
+        </details>
+
+        <details class="details-panel atalhos-panel">
+          <summary>Atalhos do teclado</summary>
+          <div class="atalhos-grid muted small">
+            <span><b>Tab</b> próxima fala · <b>Enter</b> editar texto · <b>Esc</b> sair</span>
+            <span><b>Q / E</b> fonte − / + · <b>R</b> centralizar · <b>T</b> fonte auto</span>
+            <span><b>W A S D</b> mover (Shift = rápido · Alt = fino)</span>
+            <span><b>PageUp/Down</b> páginas · <b>Espaço</b> Revisão</span>
+            <span><b>Z</b> altura · <b>X</b> 100% · <b>C / V</b> zoom + / −</span>
+            <span><b>Ctrl+S</b> salvar · <b>Ctrl+Enter</b> salvar e avançar</span>
+          </div>
+        </details>
+      </aside>
     </div>
 
     <script type="module" src="/app.js"></script>

@@ -13,7 +13,8 @@ export const state = {
   previewing: false,
   reading: false,
   advanced: false,
-  zoom: 1
+  zoom: 1,
+  view: "dublado"   // aba da página grande: "dublado" (edição) | "original"
 };
 
 export const elements = {
@@ -42,7 +43,12 @@ export const elements = {
   zoomIn: document.querySelector("#zoom-in"),
   zoomOut: document.querySelector("#zoom-out"),
   zoomFit: document.querySelector("#zoom-fit"),
+  zoomFitW: document.querySelector("#zoom-fit-w"),
+  zoom100: document.querySelector("#zoom-100"),
   zoomLabel: document.querySelector("#zoom-label"),
+  viewOriginal: document.querySelector("#view-original"),
+  viewDublado: document.querySelector("#view-dublado"),
+  viewComparar: document.querySelector("#view-comparar"),
   prevPage: document.querySelector("#prev-page"),
   nextPage: document.querySelector("#next-page"),
   addLine: document.querySelector("#add-line"),

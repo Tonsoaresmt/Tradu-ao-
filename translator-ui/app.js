@@ -27,8 +27,42 @@ import { initAutosave } from "./autosave.js";
 function toggleReading() {
   state.reading = !state.reading;
   document.body.classList.toggle("reading-mode", state.reading);
-  elements.readingMode.textContent = state.reading ? "Editar" : "Leitura";
+  elements.readingMode.textContent = state.reading ? "Editar" : "Revisão";
   requestAnimationFrame(() => applyZoom());
+}
+
+// ===== Abas da página grande: Original | Dublado (Comparar alterna as duas) =====
+function setView(view) {
+  state.view = view;
+  document.body.classList.toggle("view-original", view === "original");
+  elements.viewOriginal?.classList.toggle("on", view === "original");
+  elements.viewDublado?.classList.toggle("on", view !== "original");
+  requestAnimationFrame(() => applyZoom());
+}
+
+// ===== Zoom: a imagem visível e o palco visível (aba Original ou Dublado) =====
+function visibleImg() {
+  return document.body.classList.contains("view-original") ? elements.pageImageOriginal : elements.pageImage;
+}
+function visibleStage() {
+  return elements.viewerStage?.clientHeight ? elements.viewerStage : elements.origStage;
+}
+function zoomFitWidth() {
+  const img = visibleImg();
+  const stage = visibleStage();
+  if (!img?.naturalWidth || !stage?.clientHeight) return;
+  const h = Math.max(120, stage.clientHeight - 16);
+  const targetW = Math.max(120, stage.clientWidth - 24);
+  state.zoom = clamp((targetW * img.naturalHeight) / (img.naturalWidth * h), 0.2, 6);
+  applyZoom();
+}
+function zoom100() {
+  const img = visibleImg();
+  const stage = visibleStage();
+  if (!img?.naturalHeight || !stage?.clientHeight) return;
+  const h = Math.max(120, stage.clientHeight - 16);
+  state.zoom = clamp(img.naturalHeight / h, 0.2, 6);
+  applyZoom();
 }
 
 function navigateBox(dir) {
@@ -36,9 +70,26 @@ function navigateBox(dir) {
   if (!boxes.length) return;
   const idx = boxes.findIndex((b) => b.id === state.selectedBoxId);
   const ni = idx < 0 ? (dir > 0 ? 0 : boxes.length - 1) : (idx + dir + boxes.length) % boxes.length;
+  // Seleciona SEM focar o texto (bancada: Tab navega, Enter edita, Esc sai).
   selectBox(boxes[ni].id);
-  const input = elements.boxLayer.querySelector(`.translation-box[data-id="${boxes[ni].id}"] .box-input`);
-  if (input) input.focus({ preventScroll: true });
+}
+
+// Q/E: fonte da fala selecionada −/+ (trava no tamanho escolhido, como o campo Fonte).
+function adjustSelectedFont(delta) {
+  const box = getSelectedBox();
+  if (!box) return false;
+  let base = box.fontLocked ? Number(box.fontSize) || 0 : 0;
+  if (!base) {
+    // parte do tamanho ATUAL auto-ajustado (px do editor -> px da página)
+    const inline = elements.boxLayer.querySelector(".translation-box.selected .box-input");
+    const scale = (elements.pageImage.clientHeight || 1) / (elements.pageImage.naturalHeight || 1);
+    const px = inline ? parseFloat(getComputedStyle(inline).fontSize) : 18;
+    base = Math.round(px / (scale || 1)) || 18;
+  }
+  const size = clamp(base + delta, 8, 160);
+  updateSelectedBox({ fontSize: size, fontLocked: true });
+  if (elements.fontSize) elements.fontSize.value = size;
+  return true;
 }
 
 function wireEvents() {
@@ -50,6 +101,11 @@ function wireEvents() {
   elements.zoomIn.addEventListener("click", () => { state.zoom = Math.min(3, (state.zoom || 1) + 0.25); applyZoom(); });
   elements.zoomOut.addEventListener("click", () => { state.zoom = Math.max(0.5, (state.zoom || 1) - 0.25); applyZoom(); });
   elements.zoomFit.addEventListener("click", () => { state.zoom = 1; applyZoom(); });
+  elements.zoomFitW?.addEventListener("click", zoomFitWidth);
+  elements.zoom100?.addEventListener("click", zoom100);
+  elements.viewOriginal?.addEventListener("click", () => setView("original"));
+  elements.viewDublado?.addEventListener("click", () => setView("dublado"));
+  elements.viewComparar?.addEventListener("click", () => setView(state.view === "original" ? "dublado" : "original"));
   window.addEventListener("resize", () => applyZoom());
   elements.prevPage.addEventListener("click", () => {
     if (!state.pages.length) return;
@@ -206,22 +262,31 @@ function wireEvents() {
     return true;
   }
 
-  // Atalhos: Tab/Shift+Tab navegam falas; Ctrl+S salva; Ctrl+Enter salva e vai p/ proxima pagina.
+  // ===== Atalhos da BANCADA =====
+  // Regra: atalhos de LETRA (Q/E/R/T, WASD, Z/X/C/V, Espaço) só valem FORA da
+  // digitação. Tab navega sempre; Enter entra no texto da fala; Esc sai dela.
+  const isTyping = () => /^(input|textarea|select)$/i.test(document.activeElement?.tagName || "");
+  const onButton = () => /^(button|summary|a)$/i.test(document.activeElement?.tagName || "");
+  function editSelectedBox() {
+    const input = elements.boxLayer.querySelector(".translation-box.selected .box-input");
+    if (input) input.focus({ preventScroll: true });
+  }
+  function gotoPage(delta) {
+    if (!state.pages.length) return;
+    const next = clamp(state.currentPageIndex + delta, 0, state.pages.length - 1);
+    if (next === state.currentPageIndex) return;
+    state.currentPageIndex = next;
+    state.selectedBoxId = null;
+    renderCurrentPage();
+  }
+
   window.addEventListener("keydown", (event) => {
-    if (event.altKey && event.key.startsWith("Arrow")) {
-      const step = event.shiftKey ? 0.02 : 0.004;
-      const delta = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[event.key];
-      if (delta && nudgeSelectedBox(delta[0] * step, delta[1] * step)) {
-        event.preventDefault();
-        return;
-      }
-    }
-    if (event.key === "Tab") {
-      event.preventDefault();
-      navigateBox(event.shiftKey ? -1 : 1);
-      return;
-    }
     const mod = event.ctrlKey || event.metaKey;
+
+    // — sempre ativos (até digitando) —
+    if (event.key === "Tab") { event.preventDefault(); navigateBox(event.shiftKey ? -1 : 1); return; }
+    if (event.key === "PageDown") { event.preventDefault(); gotoPage(1); return; }
+    if (event.key === "PageUp") { event.preventDefault(); gotoPage(-1); return; }
     if (mod && event.key.toLowerCase() === "s") {
       event.preventDefault();
       saveProject().catch((error) => setStatus(error.message));
@@ -229,16 +294,46 @@ function wireEvents() {
     }
     if (mod && event.key === "Enter") {
       event.preventDefault();
-      saveProject()
-        .then(() => {
-          if (state.currentPageIndex < state.pages.length - 1) {
-            state.currentPageIndex += 1;
-            state.selectedBoxId = null;
-            renderCurrentPage();
-          }
-        })
-        .catch((error) => setStatus(error.message));
+      saveProject().then(() => gotoPage(1)).catch((error) => setStatus(error.message));
+      return;
     }
+    if (event.key === "Escape") {
+      if (isTyping()) { document.activeElement.blur(); event.preventDefault(); }
+      return;
+    }
+    // Alt+setas: ajuste fino de posição (funciona até digitando)
+    if (event.altKey && event.key.startsWith("Arrow")) {
+      const step = event.shiftKey ? 0.02 : 0.004;
+      const delta = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[event.key];
+      if (delta && nudgeSelectedBox(delta[0] * step, delta[1] * step)) { event.preventDefault(); return; }
+    }
+
+    if (isTyping()) return;            // daqui pra baixo: só FORA da digitação
+    if (mod || event.altKey) return;   // não rouba Ctrl/Alt+letra do navegador
+
+    const k = event.key.toLowerCase();
+
+    if (event.key === "Enter") { if (onButton()) return; event.preventDefault(); editSelectedBox(); return; }
+    if (event.key === " ") { if (onButton()) return; event.preventDefault(); toggleReading(); return; }
+
+    // Lettering: Q/E fonte − / +, R centralizar, T volta pro automático
+    if (k === "q" || k === "e") { if (adjustSelectedFont(k === "e" ? 1 : -1)) event.preventDefault(); return; }
+    if (k === "r") { event.preventDefault(); renderCurrentPage(); setToolStatus("Balões re-centralizados nesta página."); return; }
+    if (k === "t") { event.preventDefault(); updateSelectedBox({ fontLocked: false }); setToolStatus("Fonte da fala voltou para o ajuste automático."); return; }
+
+    // Movimento: WASD (Shift = rápido). Fino = Alt+setas (Ctrl+W fecharia a aba do navegador).
+    const wasd = { w: [0, -1], a: [-1, 0], s: [0, 1], d: [1, 0] }[k];
+    if (wasd) {
+      const step = event.shiftKey ? 0.02 : 0.006;
+      if (nudgeSelectedBox(wasd[0] * step, wasd[1] * step)) event.preventDefault();
+      return;
+    }
+
+    // Visualização: Z altura, X 100%, C/V zoom +/−
+    if (k === "z") { event.preventDefault(); state.zoom = 1; applyZoom(); return; }
+    if (k === "x") { event.preventDefault(); zoom100(); return; }
+    if (k === "c") { event.preventDefault(); state.zoom = Math.min(6, (state.zoom || 1) + 0.25); applyZoom(); return; }
+    if (k === "v") { event.preventDefault(); state.zoom = Math.max(0.2, (state.zoom || 1) - 0.25); applyZoom(); return; }
   });
 }
 
