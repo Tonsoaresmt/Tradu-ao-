@@ -14,7 +14,8 @@ export const state = {
   reading: false,
   advanced: false,
   zoom: 1,
-  view: "dublado"   // aba da página grande: "dublado" (edição) | "original"
+  view: "dublado",  // aba da página grande: "dublado" (edição) | "original"
+  libOpen: false    // gaveta da biblioteca (trilho lateral)
 };
 
 export const elements = {
@@ -34,6 +35,10 @@ export const elements = {
   pageImageOriginal: document.querySelector("#page-image-original"),
   boxLayer: document.querySelector("#box-layer"),
   reloadLibrary: document.querySelector("#reload-library"),
+  railLib: document.querySelector("#rail-lib"),
+  railRef: document.querySelector("#rail-ref"),
+  profileDetails: document.querySelector("#profile-details"),
+  profileText: document.querySelector("#profile-text"),
   referenceStatus: document.querySelector("#reference-status"),
   referenceFile: document.querySelector("#reference-file"),
   referenceUpload: document.querySelector("#reference-upload"),

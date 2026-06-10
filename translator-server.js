@@ -2205,6 +2205,7 @@ const server = http.createServer(async (req, res) => {
         pages: pages.length,
         profile: entry?.[1]?.perfil || "",
         learnedPages: entry?.[1]?.paginas || 0,
+        learnedFalas: entry?.[1]?.falas || 0,
         learnedAt: entry?.[1]?.atualizadoEm || null
       });
       return;

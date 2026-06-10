@@ -26,6 +26,17 @@ export async function refreshReferenceInfo() {
       ? ` · perfil aprendido ✓ (${data.learnedPages} págs)`
       : " · perfil: —";
     setRefStatus(`${manga}: ${ref}${perfil}`);
+    // Relatório de aprendizado: mostra O QUE a IA destilou da referência.
+    if (elements.profileDetails && elements.profileText) {
+      if (data.profile) {
+        const quando = data.learnedAt ? new Date(data.learnedAt).toLocaleString("pt-BR") : "—";
+        elements.profileText.textContent =
+          `${data.profile}\n\n— Aprendido de ${data.learnedPages} página(s) · ${data.learnedFalas || "?"} fala(s) lida(s) · ${quando}`;
+        elements.profileDetails.hidden = false;
+      } else {
+        elements.profileDetails.hidden = true;
+      }
+    }
   } catch (error) {
     setRefStatus(`Não consegui ler a referência: ${error.message}`);
   }

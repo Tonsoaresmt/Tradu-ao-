@@ -68,6 +68,14 @@ function zoom100() {
   applyZoom();
 }
 
+// ===== Gaveta da biblioteca (trilho lateral): mais área útil pra página =====
+function setLibOpen(open) {
+  state.libOpen = open;
+  document.body.classList.toggle("lib-open", open);
+  elements.railLib?.classList.toggle("on", open);
+  requestAnimationFrame(() => applyZoom());
+}
+
 function navigateBox(dir) {
   const boxes = orderedBoxes();
   if (!boxes.length) return;
@@ -93,6 +101,19 @@ function wireEvents() {
   elements.viewOriginal?.addEventListener("click", () => setView("original"));
   elements.viewDublado?.addEventListener("click", () => setView("dublado"));
   elements.viewComparar?.addEventListener("click", () => setView(state.view === "original" ? "dublado" : "original"));
+  // Gaveta: ☰ alterna; 📖 abre e rola até a Referência; clicar fora fecha;
+  // abrir um capítulo fecha sozinho (page-shown).
+  elements.railLib?.addEventListener("click", () => setLibOpen(!state.libOpen));
+  elements.railRef?.addEventListener("click", () => {
+    setLibOpen(true);
+    document.querySelector(".reference-panel")?.scrollIntoView({ block: "start" });
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!state.libOpen) return;
+    if (event.target.closest(".sidebar") || event.target.closest(".side-rail")) return;
+    setLibOpen(false);
+  });
+  window.addEventListener("page-shown", () => setLibOpen(false));
   window.addEventListener("resize", () => applyZoom());
   elements.prevPage.addEventListener("click", () => {
     if (!state.pages.length) return;
@@ -284,6 +305,7 @@ function wireEvents() {
     }
     if (event.key === "Escape") {
       if (isTyping()) { document.activeElement.blur(); event.preventDefault(); }
+      else if (state.libOpen) { setLibOpen(false); event.preventDefault(); }
       return;
     }
     // Alt+setas: ajuste fino de posição (funciona até digitando)
@@ -326,6 +348,7 @@ wireEvents();
 loadLibrary();
 initAutosave();
 initReference();
+setLibOpen(true);   // começa aberta: o 1º passo é escolher a obra
 
 // O detector sobe sob demanda e a 1a vez demora (carrega YOLO + EasyOCR). A barra
 // de status inicial pode sair "Detector vermelho / CPU"; este poll a atualiza

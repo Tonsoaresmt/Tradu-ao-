@@ -8,6 +8,10 @@
   </head>
   <body>
     <div class="app-shell">
+      <nav class="side-rail">
+        <button id="rail-lib" class="rail-button" type="button" title="Biblioteca (abrir/fechar)">☰</button>
+        <button id="rail-ref" class="rail-button" type="button" title="Referência do estúdio">📖</button>
+      </nav>
       <aside class="sidebar">
         <div class="brand">
           <p class="eyebrow">Local</p>
@@ -38,6 +42,10 @@
             <button id="reference-upload" class="ghost-button small" type="button">+ Adicionar referência</button>
             <button id="learn-style" class="ghost-button small" type="button">Aprender estilo</button>
           </div>
+          <details id="profile-details" class="details-panel" hidden>
+            <summary>Ver perfil aprendido</summary>
+            <pre id="profile-text" class="profile-text"></pre>
+          </details>
         </section>
       </aside>
 
