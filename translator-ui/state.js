@@ -77,6 +77,7 @@ export const elements = {
   originalText: document.querySelector("#original-text"),
   originalConf: document.querySelector("#original-conf"),
   copyOriginalOne: document.querySelector("#copy-original-one"),
+  retranslateBoxBtn: document.querySelector("#retranslate-box"),
   copyTranslatedOne: document.querySelector("#copy-translated-one"),
   suggestedPreview: document.querySelector("#suggested-preview"),
   useSuggestion: document.querySelector("#use-suggestion"),

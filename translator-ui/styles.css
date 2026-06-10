@@ -333,11 +333,13 @@ textarea {
   display: flex;                 /* centraliza o texto no balão (V + H) */
   align-items: center;
   justify-content: center;
-  border: 2px solid rgba(22, 115, 111, 0.92);
-  background: rgba(255, 255, 255, 0.94);
-  border-radius: 26px;
+  /* TRANSPARENTE: a aba mostra a página já com o inglês coberto (loadCleanBackground),
+     então a caixa só precisa do texto + uma borda fina pra indicar que é editável.
+     Assim o editor fica FIEL ao render (sem retângulo branco tapando a arte). */
+  border: 1px dashed rgba(45, 212, 191, 0.45);
+  background: transparent;
+  border-radius: 18px;
   overflow: hidden;
-  box-shadow: 0 6px 18px rgba(30, 22, 16, 0.14);
 }
 
 .translation-box.selected {
@@ -697,7 +699,7 @@ body.reading-mode .box-handle { display: none; }
 body.reading-mode .translation-box {
   border-color: transparent;
   box-shadow: none;
-  background: rgba(255, 255, 255, 0.97);
+  background: transparent;   /* modo Revisão: só a página + o texto, sem caixa */
 }
 body.reading-mode .box-input { cursor: default; }
 

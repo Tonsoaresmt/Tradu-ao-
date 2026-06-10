@@ -4,6 +4,7 @@ import { api } from "./api.js";
 import {
   getCurrentPage,
   getCurrentPageRecord,
+  getSelectedBox,
   createBox,
   orderedBoxes,
   normalizeBoxes,
@@ -119,6 +120,38 @@ export async function suggestPage() {
 
   renderCurrentPage();
   setToolStatus(`${boxes.length} sugestao(oes) atualizada(s).`);
+}
+
+// Re-traduz UMA fala com o texto original ATUAL (que o humano pode ter corrigido
+// no campo editável). Resolve erro de OCR sem precisar criar caixa nova.
+export async function retranslateBox() {
+  const box = getSelectedBox();
+  if (!box) { setToolStatus("Selecione uma fala primeiro."); return; }
+  const original = String(box.originalText || "").trim();
+  if (!original) { setToolStatus("Sem texto original para traduzir (corrija o campo Original)."); return; }
+  setToolStatus("Re-traduzindo esta fala...");
+  const result = await api("/api/suggest-translation", {
+    method: "POST",
+    body: JSON.stringify({
+      context: {
+        manga: state.selectedManga,
+        chapter: state.selectedChapter,
+        page: getCurrentPage()?.name,
+        nearbyLines: orderedBoxes().map((b) => b.originalText).filter(Boolean)
+      },
+      items: [{ id: box.id, originalText: original }]
+    })
+  });
+  const s = (result.suggestions || [])[0];
+  if (s?.text) {
+    box.suggestedText = s.text;
+    box.translatedText = s.text;
+    invalidateCleanBg(getCurrentPage()?.name);
+    renderCurrentPage();
+    setToolStatus(`Re-traduzido: ${s.text}`);
+  } else {
+    setToolStatus("A IA não retornou tradução (o Ollama está aberto?).");
+  }
 }
 
 export function applySuggestions() {

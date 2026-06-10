@@ -131,10 +131,11 @@
             <div class="compare-grid">
               <label class="ref-field">
                 <span class="field-label">
-                  Original (detectado) <span id="original-conf" class="conf-badge"></span>
+                  Original (editável) <span id="original-conf" class="conf-badge"></span>
+                  <button id="retranslate-box" class="ghost-button tiny" type="button" title="Corrigir o OCR acima e re-traduzir só esta fala">↻ retraduzir</button>
                   <button id="copy-original-one" class="ghost-button tiny" type="button" title="Copiar o texto original">copiar</button>
                 </span>
-                <textarea id="original-text" rows="3" readonly placeholder="—"></textarea>
+                <textarea id="original-text" rows="3" placeholder="— (corrija aqui se o OCR errou)"></textarea>
               </label>
               <label class="final-field">
                 <span class="field-label">

@@ -21,7 +21,7 @@ import {
   setToolStatus
 } from "./editor.js";
 import { loadLibrary, saveProject, refreshSystemStatus } from "./library.js";
-import { runOcr, suggestPage, applySuggestions, acceptConfident, copyOriginals, autoOrganize, autoTranslatePage, loadCleanBackground, reviewPage, retranslatePage } from "./translator.js";
+import { runOcr, suggestPage, applySuggestions, acceptConfident, copyOriginals, autoOrganize, autoTranslatePage, loadCleanBackground, reviewPage, retranslatePage, retranslateBox } from "./translator.js";
 import { previewPage } from "./preview.js";
 import { exportChapter, preprocessChapter } from "./export.js";
 import { initAutosave } from "./autosave.js";
@@ -174,6 +174,18 @@ function wireEvents() {
     const inline = elements.boxLayer.querySelector(".translation-box.selected .box-input");
     if (inline) inline.value = box.translatedText;
     renderTranslationList();
+  });
+  // OCR editável: corrigir o texto Original detectado (atualiza a fala + lista).
+  elements.originalText.addEventListener("input", () => {
+    const box = getSelectedBox();
+    if (!box) return;
+    box.originalText = elements.originalText.value;
+    renderTranslationList();
+  });
+  // "↻ retraduzir": re-traduz SÓ esta fala com o original corrigido.
+  elements.retranslateBoxBtn?.addEventListener("click", (event) => {
+    event.preventDefault();
+    retranslateBox().catch((error) => setToolStatus(error.message));
   });
   elements.useSuggestion.addEventListener("click", () => {
     const box = getSelectedBox();
