@@ -607,6 +607,14 @@ def render_image(image_path, boxes, font_path, typeset=True, style_hint=None):
             text_mask[labels == i] = 255
             if ch >= 4 and ch < mh * 0.5:        # altura de letra plausivel
                 letter_h.append(ch)
+        # CRUCIAL p/ balao OVAL em fundo ESCURO: o retangulo interno pega os CANTOS
+        # escuros (fora do oval) e o threshold os marca como "texto" -> seriam
+        # pintados de branco, quadrando o oval e apagando o contorno. Solucao: so
+        # cobrir DENTRO da regiao BRANCA do balao (interior bright, com os buracos
+        # do texto fechados). Cantos escuros ficam de fora -> oval preservado.
+        interior = ((mask == 0).astype(np.uint8) * 255)   # branco do balao (sem o texto)
+        interior = cv2.morphologyEx(interior, cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))  # fecha os buracos do texto
+        text_mask = cv2.bitwise_and(text_mask, interior)
         if not text_mask.any():
             continue                             # nada que pareca texto -> nao mexe
         # Fonte do ORIGINAL: mediana da altura das letras / ~0.70 (alvo de tamanho)
