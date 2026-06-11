@@ -382,25 +382,17 @@ export async function retranslatePage() {
   loadCleanBackground();
 }
 
-function bestOverlap(box, oldBoxes) {
-  let best = null;
-  let bestArea = 0;
-  const ax2 = box.x + box.width;
-  const ay2 = box.y + box.height;
-  for (const o of oldBoxes) {
-    const ix = Math.max(0, Math.min(ax2, o.x + o.width) - Math.max(box.x, o.x));
-    const iy = Math.max(0, Math.min(ay2, o.y + o.height) - Math.max(box.y, o.y));
-    const inter = ix * iy;
-    if (inter > bestArea) {
-      bestArea = inter;
-      best = o;
-    }
-  }
-  return bestArea > 0 ? best : null;
+function overlapArea(a, b) {
+  const ix = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
+  const iy = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+  return ix * iy;
 }
 
 // Auto Organizar: redetecta os balões da página (caixas justas) e preserva as
-// traduções, casando cada balão novo com o antigo mais sobreposto.
+// traduções, casando cada balão novo com o antigo mais sobreposto — pareamento
+// guloso 1:1 (maior overlap primeiro): um balão antigo NAO pode "doar" sua
+// traducao pra 2 balões novos ao mesmo tempo (senao o mesmo texto apareceria
+// duplicado em 2 baloes diferentes apos reorganizar).
 export async function autoOrganize() {
   const page = getCurrentPage();
   if (!page) {
@@ -425,15 +417,28 @@ export async function autoOrganize() {
   }
 
   const oldBoxes = getCurrentPageRecord().boxes || [];
-  const newBoxes = result.lines.map((line, index) => {
-    const box = createBox({ ...line, order: index + 1, suggestedText: "", translatedText: "" });
-    const match = bestOverlap(box, oldBoxes);
-    if (match) {
-      box.translatedText = match.translatedText || "";
-      box.suggestedText = match.suggestedText || "";
-    }
-    return box;
+  const newBoxes = result.lines.map((line, index) =>
+    createBox({ ...line, order: index + 1, suggestedText: "", translatedText: "" })
+  );
+
+  // Pareamento guloso 1:1 pelo MAIOR overlap, global (nao por-novo-balao isolado).
+  const pairs = [];
+  newBoxes.forEach((nb, ni) => {
+    oldBoxes.forEach((ob, oi) => {
+      const area = overlapArea(nb, ob);
+      if (area > 0) pairs.push({ ni, oi, area });
+    });
   });
+  pairs.sort((a, b) => b.area - a.area);
+  const usedNew = new Set();
+  const usedOld = new Set();
+  for (const { ni, oi } of pairs) {
+    if (usedNew.has(ni) || usedOld.has(oi)) continue;
+    usedNew.add(ni);
+    usedOld.add(oi);
+    newBoxes[ni].translatedText = oldBoxes[oi].translatedText || "";
+    newBoxes[ni].suggestedText = oldBoxes[oi].suggestedText || "";
+  }
 
   getCurrentPageRecord().boxes = newBoxes;
   state.selectedBoxId = newBoxes[0]?.id || null;
