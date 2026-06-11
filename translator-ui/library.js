@@ -3,6 +3,7 @@ import { state, elements } from "./state.js";
 import { api } from "./api.js";
 import { renderCurrentPage, setStatus, setToolStatus, toolSummary, renderSystemStatus } from "./editor.js";
 import { markChapterSaved } from "./autosave.js";
+import { invalidateCleanBg } from "./translator.js";
 
 // Re-busca o status do sistema (leve) e redesenha a barra. Retorna true quando
 // o detector ja esta pronto (yolo carregado) — usado pra parar o poll.
@@ -118,6 +119,7 @@ export async function openChapter(manga, chapter) {
 
   try {
     const data = await api(`/api/chapter?manga=${encodeURIComponent(manga)}&chapter=${encodeURIComponent(chapter)}`);
+    invalidateCleanBg();   // limpa cache de fundos do projeto anterior (nomes de pagina se repetem entre obras)
     state.selectedManga = manga;
     state.selectedChapter = chapter;
     state.pages = data.pages;

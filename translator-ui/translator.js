@@ -15,10 +15,14 @@ import {
 // === Fundo limpo do editor (inpaint: ingles removido, rosto/arte preservados) ===
 // O editor passa a mostrar a pagina JA com o inpaint, em vez da original. Assim a
 // caixa de fala NAO precisa tapar nada (fica transparente) -> nao cobre o rosto.
-const _cleanBgCache = new Map();   // pageName -> dataUrl
+// Chave inclui manga+capitulo+pagina: nomes de pagina (001.jpg, 002.jpg...) se
+// repetem entre obras/capitulos diferentes -> sem isso, trocar de projeto podia
+// reaproveitar (cache OU resposta tardia da API) o fundo limpo de OUTRA obra na
+// mesma pagina, misturando a imagem de um projeto com as caixas de outro.
+const _cleanBgCache = new Map();   // `${manga}::${chapter}::${pageName}` -> dataUrl
 
 export function invalidateCleanBg(pageName) {
-  if (pageName) _cleanBgCache.delete(pageName);
+  if (pageName) _cleanBgCache.delete(`${state.selectedManga}::${state.selectedChapter}::${pageName}`);
   else _cleanBgCache.clear();
   // fundo volta a ser o original -> caixas voltam a ser BRANCAS (cobrem o EN)
   elements.boxLayer?.classList.remove("bg-clean");
@@ -30,10 +34,15 @@ export async function loadCleanBackground() {
   if (!page || !state.selectedManga) return;
   const boxes = state.project.pages?.[page.name]?.boxes || [];
   if (!boxes.length) return;                  // sem baloes ainda -> mantem original
-  const key = page.name;
+  const manga = state.selectedManga;
+  const chapter = state.selectedChapter;
+  const key = `${manga}::${chapter}::${page.name}`;
 
   const apply = (dataUrl) => {
-    if (getCurrentPage()?.name === key && !state.previewing && dataUrl) {
+    const samePage = getCurrentPage()?.name === page.name
+      && state.selectedManga === manga
+      && state.selectedChapter === chapter;
+    if (samePage && !state.previewing && dataUrl) {
       elements.pageImage.src = dataUrl;       // troca o fundo da aba Traducao
       // fundo limpo no lugar -> caixas podem ficar transparentes (fiel ao render)
       elements.boxLayer?.classList.add("bg-clean");
