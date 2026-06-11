@@ -153,17 +153,25 @@ export async function saveProject() {
     setStatus("Abra um capitulo antes de salvar.");
     return;
   }
+  const manga = state.selectedManga;
+  const chapter = state.selectedChapter;
 
   const result = await api("/api/project", {
     method: "POST",
     body: JSON.stringify({
-      manga: state.selectedManga,
-      chapter: state.selectedChapter,
+      manga,
+      chapter,
       pages: state.project.pages
     })
   });
 
-  markChapterSaved();
+  // Se o usuario trocou de capitulo durante o POST, "lastSnapshot" e do
+  // capitulo NOVO (ainda nao salvo) -> nao sobrescreve com o snapshot do
+  // capitulo ANTIGO (que ja foi salvo aqui), senao o autosave acharia que as
+  // edicoes do capitulo NOVO ja estao salvas e nunca as gravaria.
+  if (state.selectedManga === manga && state.selectedChapter === chapter) {
+    markChapterSaved();
+  }
   const trained = result.training?.updated || 0;
   setStatus(trained
     ? `Projeto salvo. ${trained} exemplo(s) adicionados ao treino.`

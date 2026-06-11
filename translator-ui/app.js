@@ -162,7 +162,8 @@ function wireEvents() {
     autoBusy = true;
     autoProcessed.add(key);
     try {
-      await autoTranslatePage(page);
+      const result = await autoTranslatePage(page);
+      if (result === null) autoProcessed.delete(key); // projeto trocou no meio -> tenta de novo ao revisitar
     } catch (error) {
       autoProcessed.delete(key); // permite tentar de novo ao revisitar
       setToolStatus(error.message);

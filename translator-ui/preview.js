@@ -16,6 +16,9 @@ export async function previewPage() {
     return;
   }
 
+  const manga = state.selectedManga;
+  const chapter = state.selectedChapter;
+
   setToolStatus("Gerando previa da pagina (inpaint + typeset)...");
   const boxes = orderedBoxes().map((box) => ({
     x: box.x,
@@ -30,12 +33,20 @@ export async function previewPage() {
   const result = await api("/api/preview-page", {
     method: "POST",
     body: JSON.stringify({
-      manga: state.selectedManga,
-      chapter: state.selectedChapter,
+      manga,
+      chapter,
       page: page.name,
       boxes
     })
   });
+
+  // Trocou de obra/capitulo/pagina enquanto a previa renderizava: descarta —
+  // mostrar essa imagem aqui seria a previa de OUTRO projeto na tela atual,
+  // alem de travar o fundo limpo da pagina nova (loadCleanBackground ignora
+  // tudo enquanto state.previewing for true).
+  if (state.selectedManga !== manga || state.selectedChapter !== chapter || getCurrentPage()?.name !== page.name) {
+    return;
+  }
 
   state.previewing = true;
   elements.previewPage.textContent = "Editar";

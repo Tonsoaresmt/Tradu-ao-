@@ -40,11 +40,13 @@ export async function preprocessChapter() {
     setStatus("Abra um capitulo antes de pre-processar.");
     return;
   }
+  const manga = state.selectedManga;
+  const chapter = state.selectedChapter;
 
   setToolStatus("Iniciando pre-processamento do capitulo...");
   const start = await api("/api/preprocess-chapter", {
     method: "POST",
-    body: JSON.stringify({ manga: state.selectedManga, chapter: state.selectedChapter, ocr: elements.ocrEngine?.value })
+    body: JSON.stringify({ manga, chapter, ocr: elements.ocrEngine?.value })
   });
 
   const jobId = start.jobId;
@@ -62,8 +64,17 @@ export async function preprocessChapter() {
       return;
     }
 
-    setToolStatus(`Capitulo pre-processado: ${job.detectedBoxes} fala(s), ${job.suggested} sugerida(s)${job.skipped ? `, ${job.skipped} pag. ja feitas mantidas` : ""}. Recarregando...`);
-    await openChapter(state.selectedManga, state.selectedChapter);
+    const msg = `Capitulo pre-processado: ${job.detectedBoxes} fala(s), ${job.suggested} sugerida(s)${job.skipped ? `, ${job.skipped} pag. ja feitas mantidas` : ""}.`;
+    // So recarrega se o capitulo pre-processado ainda for o que esta aberto: se o
+    // usuario trocou de capitulo durante o processamento (que pode levar minutos),
+    // recarregar agora descartaria edicoes nao salvas do capitulo NOVO (state.project
+    // e substituido por inteiro).
+    if (state.selectedManga === manga && state.selectedChapter === chapter) {
+      setToolStatus(`${msg} Recarregando...`);
+      await openChapter(manga, chapter);
+    } else {
+      setToolStatus(`${msg} (${manga} / ${chapter} pronto — abra de novo pra ver o resultado)`);
+    }
     return;
   }
 }

@@ -72,6 +72,8 @@ export async function loadCleanBackground() {
 export async function runOcr() {
   const page = getCurrentPage();
   if (!page) return;
+  const manga = state.selectedManga;
+  const chapter = state.selectedChapter;
 
   setToolStatus("Detectando textos...");
   const result = await api("/api/ocr-page", {
@@ -86,6 +88,15 @@ export async function runOcr() {
 
   if (!result.available) {
     setToolStatus(result.message || "OCR indisponivel.");
+    return;
+  }
+
+  // getCurrentPageRecord() faz lookup AO VIVO em state.project.pages: se o
+  // usuario trocou de obra/capitulo enquanto o OCR rodava, isso apontaria pra
+  // pagina atual do projeto NOVO e gravaria nela os baloes detectados na
+  // imagem do projeto ANTIGO. Descarta o resultado nesse caso.
+  if (state.selectedManga !== manga || state.selectedChapter !== chapter || getCurrentPage()?.name !== page.name) {
+    setToolStatus("Pagina/projeto mudou durante a deteccao — resultado descartado.");
     return;
   }
 
@@ -108,15 +119,18 @@ export async function suggestPage() {
     setToolStatus("Nao ha texto original para sugerir.");
     return;
   }
+  const manga = state.selectedManga;
+  const chapter = state.selectedChapter;
+  const pageName = getCurrentPage()?.name;
 
   setToolStatus("Gerando sugestoes...");
   const result = await api("/api/suggest-translation", {
     method: "POST",
     body: JSON.stringify({
       context: {
-        manga: state.selectedManga,
-        chapter: state.selectedChapter,
-        page: getCurrentPage()?.name,
+        manga,
+        chapter,
+        page: pageName,
         nearbyLines: orderedBoxes().map((box) => box.originalText).filter(Boolean)
       },
       items: boxes.map((box) => ({
@@ -125,6 +139,11 @@ export async function suggestPage() {
       }))
     })
   });
+
+  // Se trocou de obra/pagina enquanto esperava, "boxes" ficou preso ao projeto
+  // ANTIGO (state.project foi substituido) -> aplicar aqui so geraria trabalho
+  // perdido + uma mensagem de status confusa sobre a pagina errada.
+  if (state.selectedManga !== manga || state.selectedChapter !== chapter || getCurrentPage()?.name !== pageName) return;
 
   const byId = new Map(result.suggestions.map((item) => [item.id, item]));
   for (const box of boxes) {
@@ -143,24 +162,31 @@ export async function retranslateBox() {
   if (!box) { setToolStatus("Selecione uma fala primeiro."); return; }
   const original = String(box.originalText || "").trim();
   if (!original) { setToolStatus("Sem texto original para traduzir (corrija o campo Original)."); return; }
+  const manga = state.selectedManga;
+  const chapter = state.selectedChapter;
+  const pageName = getCurrentPage()?.name;
   setToolStatus("Re-traduzindo esta fala...");
   const result = await api("/api/suggest-translation", {
     method: "POST",
     body: JSON.stringify({
       context: {
-        manga: state.selectedManga,
-        chapter: state.selectedChapter,
-        page: getCurrentPage()?.name,
+        manga,
+        chapter,
+        page: pageName,
         nearbyLines: orderedBoxes().map((b) => b.originalText).filter(Boolean)
       },
       items: [{ id: box.id, originalText: original }]
     })
   });
+  // Trocou de obra/pagina enquanto esperava: "box" ficou preso ao projeto ANTIGO
+  // -> nao mexe no fundo limpo nem na pagina (que agora e de outro projeto) e
+  // nao mostra "Re-traduzido: ..." sobre uma fala que o usuario nem ve mais.
+  if (state.selectedManga !== manga || state.selectedChapter !== chapter || getCurrentPage()?.name !== pageName) return;
   const s = (result.suggestions || [])[0];
   if (s?.text) {
     box.suggestedText = s.text;
     box.translatedText = s.text;
-    invalidateCleanBg(getCurrentPage()?.name);
+    invalidateCleanBg(pageName);
     renderCurrentPage();
     setToolStatus(`Re-traduzido: ${s.text}`);
   } else {
@@ -223,23 +249,32 @@ export async function autoTranslatePage(page) {
   page = page || getCurrentPage();
   if (!page) return false;
 
+  const manga = state.selectedManga;
+  const chapter = state.selectedChapter;
   const pages = state.project.pages || (state.project.pages = {});
   const record = pages[page.name] || (pages[page.name] = { boxes: [] });
   if (record.boxes && record.boxes.length) return false; // já processada
 
-  const onThisPage = () => getCurrentPage()?.name === page.name;
+  // Se o usuario trocar de obra/capitulo durante os awaits abaixo, "state.project"
+  // e substituido por inteiro -> "pages"/"record" ficam presos ao projeto ANTIGO e
+  // escrever neles vira trabalho perdido. Detectamos isso e devolvemos null pra
+  // quem chamou liberar a pagina pra ser tentada de novo (em vez de marcar como
+  // "ja processada" pra sempre).
+  const sameProject = () => state.selectedManga === manga && state.selectedChapter === chapter;
+  const onThisPage = () => sameProject() && getCurrentPage()?.name === page.name;
   const status = (msg) => { if (onThisPage()) setToolStatus(msg); };
 
   status("Detectando os balões...");
   const result = await api("/api/ocr-page", {
     method: "POST",
     body: JSON.stringify({
-      manga: state.selectedManga,
-      chapter: state.selectedChapter,
+      manga,
+      chapter,
       page: page.name,
       ocr: elements.ocrEngine?.value
     })
   });
+  if (!sameProject()) return null; // projeto trocou -> descarta, permite retentar depois
   if (!result.available || !Array.isArray(result.lines)) {
     status(result.message || "Detecção indisponível.");
     return false;
@@ -268,14 +303,15 @@ export async function autoTranslatePage(page) {
     method: "POST",
     body: JSON.stringify({
       context: {
-        manga: state.selectedManga,
-        chapter: state.selectedChapter,
+        manga,
+        chapter,
         page: page.name,
         nearbyLines: nearby
       },
       items: toTranslate.map((box) => ({ id: box.id, originalText: box.originalText }))
     })
   });
+  if (!sameProject()) return null; // projeto trocou de novo durante a traducao
   const byId = new Map((sug.suggestions || []).map((s) => [s.id, s]));
   for (const box of toTranslate) {
     const s = byId.get(box.id);
@@ -346,16 +382,22 @@ export async function reviewPage() {
     setToolStatus("Nada traduzido nesta página para revisar.");
     return;
   }
+  const manga = state.selectedManga;
+  const chapter = state.selectedChapter;
   setToolStatus("Revisando com o modelo maior (carrega o 9b, pode demorar)...");
   const data = await api("/api/review-page", {
     method: "POST",
     body: JSON.stringify({
-      manga: state.selectedManga,
-      chapter: state.selectedChapter,
+      manga,
+      chapter,
       page: page.name,
       boxes: record.boxes.map((b) => ({ id: b.id, originalText: b.originalText, translatedText: b.translatedText }))
     })
   });
+  // Trocou de obra/capitulo enquanto o 9b carregava: "record" ficou preso ao
+  // projeto ANTIGO -> aplicar aqui seria trabalho perdido + status confuso
+  // sobre a revisao de uma pagina que nao e mais a exibida.
+  if (state.selectedManga !== manga || state.selectedChapter !== chapter) return;
   const byId = new Map((data.boxes || []).map((r) => [r.id, r]));
   let changed = 0;
   for (const b of record.boxes) {
@@ -408,6 +450,8 @@ export async function autoOrganize() {
     setToolStatus("Abra uma pagina antes de auto organizar.");
     return;
   }
+  const manga = state.selectedManga;
+  const chapter = state.selectedChapter;
 
   setToolStatus("Auto organizando (redetectando baloes)...");
   const result = await api("/api/ocr-page", {
@@ -422,6 +466,14 @@ export async function autoOrganize() {
 
   if (!result.available || !Array.isArray(result.lines) || !result.lines.length) {
     setToolStatus(result.message || "Nenhum balao detectado.");
+    return;
+  }
+
+  // Mesmo risco do runOcr: getCurrentPageRecord() e ao vivo. Se o projeto/pagina
+  // mudou durante a redeteccao, nao mistura os baloes da imagem ANTIGA na pagina
+  // do projeto NOVO.
+  if (state.selectedManga !== manga || state.selectedChapter !== chapter || getCurrentPage()?.name !== page.name) {
+    setToolStatus("Pagina/projeto mudou durante a redeteccao — resultado descartado.");
     return;
   }
 
