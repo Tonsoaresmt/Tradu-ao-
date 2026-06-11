@@ -20,6 +20,8 @@ const _cleanBgCache = new Map();   // pageName -> dataUrl
 export function invalidateCleanBg(pageName) {
   if (pageName) _cleanBgCache.delete(pageName);
   else _cleanBgCache.clear();
+  // fundo volta a ser o original -> caixas voltam a ser BRANCAS (cobrem o EN)
+  elements.boxLayer?.classList.remove("bg-clean");
 }
 
 export async function loadCleanBackground() {
@@ -33,6 +35,8 @@ export async function loadCleanBackground() {
   const apply = (dataUrl) => {
     if (getCurrentPage()?.name === key && !state.previewing && dataUrl) {
       elements.pageImage.src = dataUrl;       // troca o fundo da aba Traducao
+      // fundo limpo no lugar -> caixas podem ficar transparentes (fiel ao render)
+      elements.boxLayer?.classList.add("bg-clean");
     }
   };
 
@@ -50,8 +54,9 @@ export async function loadCleanBackground() {
       })
     });
     if (data?.dataUrl) { _cleanBgCache.set(key, data.dataUrl); apply(data.dataUrl); }
-  } catch {
-    /* se falhar, mantem a original */
+  } catch (error) {
+    // Caixas seguem BRANCAS cobrindo o EN (seguro). Avisa pra diagnosticar.
+    setToolStatus(`Fundo limpo indisponível (${error.message}) — caixas cobrindo o original.`);
   }
 }
 

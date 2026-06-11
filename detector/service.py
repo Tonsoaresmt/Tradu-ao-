@@ -647,7 +647,7 @@ def render_image(image_path, boxes, font_path, typeset=True, style_hint=None):
     if not typeset:
         # Modo "fundo do editor": so o inpaint (ingles removido, arte/rosto
         # preservados) — o texto editavel e desenhado por cima pela UI.
-        return out, 0, []
+        return out, 0, [], {"bubbleCount": 0, "fontMedian": 0, "fontFrac": 0, "fillMedian": 0}
     draw = ImageDraw.Draw(out)
     rendered = 0
     issues = []

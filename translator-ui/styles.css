@@ -371,14 +371,15 @@ body.lib-open .sidebar {
   display: flex;                 /* centraliza o texto no balão (V + H) */
   align-items: center;
   justify-content: center;
-  /* TRANSPARENTE: a aba mostra a página já com o inglês coberto (loadCleanBackground),
-     então a caixa só precisa do texto + uma borda fina pra indicar que é editável.
-     Assim o editor fica FIEL ao render (sem retângulo branco tapando a arte). */
   border: 1px dashed rgba(45, 212, 191, 0.45);
-  background: transparent;
+  /* PADRÃO: BRANCA — cobre o inglês SEMPRE (na aba Tradução nunca pode aparecer
+     EN sob o PT). Quando o fundo LIMPO (inpaint) carrega, o box-layer ganha
+     .bg-clean e a caixa fica transparente -> fiel ao render, sem tapar a arte. */
+  background: rgba(255, 255, 255, 0.97);
   border-radius: 18px;
   overflow: hidden;
 }
+.box-layer.bg-clean .translation-box { background: transparent; }
 
 .translation-box.selected {
   border-color: #255c99;
@@ -877,7 +878,7 @@ body:not(.view-original) #orig-stage { display: none; }
   width: auto;
   height: auto;
 }
-.page-canvas { max-height: none; }   /* envolve a imagem inteira (overlay segue o zoom) */
+.page-canvas { max-height: none; max-width: none; }   /* envolve a imagem inteira (overlay segue o zoom) */
 
 /* imagem original espelha o comportamento de exibição da traduzida */
 #page-image-original {

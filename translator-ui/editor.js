@@ -295,12 +295,10 @@ export function renderBoxes() {
     node.style.top = `${box.y * 100}%`;
     node.style.width = `${box.width * 100}%`;
     node.style.height = `${box.height * 100}%`;
-    // Caixa TRANSPARENTE: o fundo da aba Tradução já vem com o inpaint (inglês
-    // removido, rosto/arte preservados), então a caixa NÃO tapa nada — só a
-    // borda + o texto editável. (SFX continua translúcido alaranjado.)
-    node.style.background = box.coverOriginal === false
-      ? "rgba(248, 252, 252, 0.20)"
-      : "transparent";
+    // Fundo da caixa é do CSS: BRANCA por padrão (cobre o inglês SEMPRE) e
+    // transparente quando o fundo limpo (inpaint) carrega (.bg-clean no layer).
+    // Inline só no caso "não cobrir o original" (o usuário PEDIU ver o de baixo).
+    if (box.coverOriginal === false) node.style.background = "rgba(248, 252, 252, 0.20)";
 
     // Alça numerada (cor = confiança): clique seleciona, arraste move.
     const handle = document.createElement("div");
@@ -381,6 +379,9 @@ export function renderCurrentPage() {
   elements.pageImageOriginal.onload = () => applyZoom();
   elements.pageImageOriginal.src = page.url;
   elements.pageImage.onload = () => { applyZoom(); renderBoxes(); };
+  // Fundo (ainda) é o ORIGINAL -> caixas BRANCAS cobrem o inglês até o fundo
+  // limpo (inpaint) chegar via loadCleanBackground, que liga .bg-clean.
+  elements.boxLayer?.classList.remove("bg-clean");
   elements.pageImage.src = page.url;
 
   normalizeBoxes();
@@ -463,8 +464,6 @@ export function selectBox(id) {
   for (const node of elements.boxLayer.children) {
     node.classList.toggle("selected", node.dataset.id === id);
   }
-  // Abre o detalhe (Original | Tradução) ao clicar numa caixinha.
-  if (id && elements.reviewDetails) elements.reviewDetails.open = true;
   renderTranslationList();
   syncBoxForm();
   positionFloatTools();
