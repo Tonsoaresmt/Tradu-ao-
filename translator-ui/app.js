@@ -290,7 +290,9 @@ function wireEvents() {
     updateSelectedBox({ height: clamp(Number(elements.boxHeight.value) / 100, 0.05, 1 - box.y) });
   });
 
-  elements.boxLayer.addEventListener("pointerdown", startDraw);
+  // Clicar na página NÃO cria mais balão (era irritante: clique acidental virava
+  // caixa). Para adicionar uma caixa de propósito, use o botão "+ Caixa".
+  // (startDraw segue disponível, só não está mais ligado ao clique.)
   window.addEventListener("pointermove", handlePointerMove);
   window.addEventListener("pointerup", handlePointerUp);
 
