@@ -241,6 +241,39 @@ def classify_box(crop_bgr, text=""):
         return "fala"
 
 
+def _dedupe_overlapping_boxes(rects, types):
+    """Indices de deteccoes REDUNDANTES a descartar: o YOLO as vezes detecta,
+    alem das caixas certas de cada balao/trecho, uma caixa "grande demais" que
+    abrange varios deles ao mesmo tempo (>=80% de uma caixa MENOR do mesmo tipo
+    contida dentro dela). Essa caixa grande acaba com OCR/traducao misturando o
+    texto de todas as outras, e na hora de desenhar faz o texto de 2 baloes
+    proximos se sobrepor/virar um so. Mantemos as caixas menores (recortes mais
+    precisos de cada balao) e descartamos a(s) maior(es)."""
+    n = len(rects)
+    drop = set()
+    for i in range(n):
+        if types[i] == "sfx":
+            continue
+        ax1, ay1, ax2, ay2 = rects[i]
+        area_i = max(1.0, (ax2 - ax1) * (ay2 - ay1))
+        for j in range(n):
+            if i == j or types[j] != types[i]:
+                continue
+            bx1, by1, bx2, by2 = rects[j]
+            area_j = (bx2 - bx1) * (by2 - by1)
+            if area_j >= area_i:
+                continue
+            ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+            ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+            if ix2 <= ix1 or iy2 <= iy1:
+                continue
+            inter = (ix2 - ix1) * (iy2 - iy1)
+            if inter / area_j >= 0.8:
+                drop.add(i)
+                break
+    return drop
+
+
 def detect(image_path, engine=None):
     from PIL import Image
 
@@ -254,7 +287,7 @@ def detect(image_path, engine=None):
     W, H = image.size
 
     results = yolo(image_path, conf=YOLO_CONF, iou=0.7, agnostic_nms=True, max_det=50, verbose=False)
-    lines = []
+    cands = []
     if results and len(results) and results[0].boxes is not None:
         boxes = results[0].boxes
         xyxy = boxes.xyxy.cpu().numpy().tolist()
@@ -278,33 +311,48 @@ def detect(image_path, engine=None):
                 btype = classify_box(crop_bgr, "")
             except Exception:
                 pass
-            # OCR na AREA INTERNA do balão (sem o fundo ao redor, que confunde o
-            # Tesseract); se não vier nada, tenta o recorte inteiro do YOLO.
-            cw, ch = crop.size
-            ocr_src = crop
-            if inner:
-                ix, iy, iw, ih = inner
-                pad = 4
-                ocr_src = crop.crop((
-                    max(0, int(ix - pad)), max(0, int(iy - pad)),
-                    min(cw, int(ix + iw + pad)), min(ch, int(iy + ih + pad))
-                ))
-            text = ocr_crop(engine, ocr_src)
-            if not text and ocr_src is not crop:
-                text = ocr_crop(engine, crop)
-            # Reserva: se o motor principal (ex.: easyocr) falhar num balão,
-            # tenta o Tesseract — o melhor dos dois mundos.
-            if not text and engine not in ("tesseract", "none", ""):
-                text = ocr_crop("tesseract", ocr_src) or ocr_crop("tesseract", crop)
-            lines.append({
-                "originalText": text,
-                "confidence": round(conf * 100),
-                "type": btype,
-                "x": max(0.0, min(1.0, bx1 / W)),
-                "y": max(0.0, min(1.0, by1 / H)),
-                "width": max(0.02, min(1.0, (bx2 - bx1) / W)),
-                "height": max(0.02, min(1.0, (by2 - by1) / H)),
+            cands.append({
+                "crop": crop, "inner": inner, "btype": btype, "conf": conf,
+                "rect": (bx1, by1, bx2, by2),
             })
+
+    # Descarta deteccoes redundantes (caixa grande que engloba 2+ caixas menores
+    # do mesmo tipo) ANTES do OCR, pra nao gastar tempo nem virar texto duplicado.
+    drop = _dedupe_overlapping_boxes([c["rect"] for c in cands], [c["btype"] for c in cands])
+
+    lines = []
+    for idx, c in enumerate(cands):
+        if idx in drop:
+            continue
+        crop, inner, btype, conf = c["crop"], c["inner"], c["btype"], c["conf"]
+        bx1, by1, bx2, by2 = c["rect"]
+        # OCR na AREA INTERNA do balão (sem o fundo ao redor, que confunde o
+        # Tesseract); se não vier nada, tenta o recorte inteiro do YOLO.
+        cw, ch = crop.size
+        ocr_src = crop
+        if inner:
+            ix, iy, iw, ih = inner
+            pad = 4
+            ocr_src = crop.crop((
+                max(0, int(ix - pad)), max(0, int(iy - pad)),
+                min(cw, int(ix + iw + pad)), min(ch, int(iy + ih + pad))
+            ))
+        text = ocr_crop(engine, ocr_src)
+        if not text and ocr_src is not crop:
+            text = ocr_crop(engine, crop)
+        # Reserva: se o motor principal (ex.: easyocr) falhar num balão,
+        # tenta o Tesseract — o melhor dos dois mundos.
+        if not text and engine not in ("tesseract", "none", ""):
+            text = ocr_crop("tesseract", ocr_src) or ocr_crop("tesseract", crop)
+        lines.append({
+            "originalText": text,
+            "confidence": round(conf * 100),
+            "type": btype,
+            "x": max(0.0, min(1.0, bx1 / W)),
+            "y": max(0.0, min(1.0, by1 / H)),
+            "width": max(0.02, min(1.0, (bx2 - bx1) / W)),
+            "height": max(0.02, min(1.0, (by2 - by1) / H)),
+        })
 
     # Ordem de leitura: cima→baixo, esquerda→direita (igual ao server atual).
     lines.sort(key=lambda l: (round(l["y"], 2), l["x"]))
@@ -700,8 +748,18 @@ def render_image(image_path, boxes, font_path, typeset=True, style_hint=None):
     min_font = max(MIN_FONT_BASE, int(H * 0.016))
 
     # --- Precomputa area + parametros de cada caixa com texto (uma vez) ---
+    all_px = [px(b) for b in boxes]   # retangulo absoluto de CADA caixa (p/ nao deixar
+                                       # a mascara de um balao "vazar" pro vizinho colado)
+    all_types = [(b.get("type") or "fala").lower() for b in boxes]
+    # Caixas redundantes do YOLO (uma "grande demais" englobando 2+ caixas
+    # menores do mesmo tipo) NAO sao desenhadas: o texto delas duplicaria/
+    # invadiria o espaco das caixas menores e mais precisas.
+    drop_idx = _dedupe_overlapping_boxes(all_px, all_types)
+
     items = []
-    for box in boxes:
+    for bi, box in enumerate(boxes):
+        if bi in drop_idx:
+            continue
         text = str(box.get("translatedText", "")).strip()
         if not text:
             continue
@@ -709,7 +767,7 @@ def render_image(image_path, boxes, font_path, typeset=True, style_hint=None):
         btype = (box.get("type") or "fala").lower()
         is_sfx = btype == "sfx"
         is_bubble = btype in ("fala", "pensamento")
-        x1, y1, x2, y2 = px(box)
+        x1, y1, x2, y2 = all_px[bi]
         mask = None
         if is_sfx:
             ax1, ay1, aw, ah = x1, y1, (x2 - x1), (y2 - y1)
@@ -725,6 +783,24 @@ def render_image(image_path, boxes, font_path, typeset=True, style_hint=None):
             # redondo...) — usada por fit_text_mask pra encaixar o texto na forma
             # real DESTE balao, sem template geometrico.
             mask = bubble_interior_mask(crop) if box.get("coverOriginal") is not False else None
+            if mask is not None:
+                # Se outro balao (vizinho proximo/colado) tem seu retangulo
+                # sobrepondo este recorte, zera essa parte da mascara: o texto
+                # deste balao NAO pode invadir a area que pertence ao vizinho,
+                # senao os dois textos se misturam num bloco so.
+                for bj, other in enumerate(boxes):
+                    if bj == bi or bj in drop_idx:
+                        continue
+                    obtype = all_types[bj]
+                    if obtype == "sfx" or other.get("coverOriginal") is False:
+                        continue
+                    ox1, oy1, ox2, oy2 = all_px[bj]
+                    ix1, iy1 = max(x1, ox1) - x1, max(y1, oy1) - y1
+                    ix2, iy2 = min(x2, ox2) - x1, min(y2, oy2) - y1
+                    if ix2 > ix1 and iy2 > iy1:
+                        mask[iy1:iy2, ix1:ix2] = 0
+                if not mask.any():
+                    mask = None
         if aw < 8 or ah < 8:
             continue
         if btype == "grito":
