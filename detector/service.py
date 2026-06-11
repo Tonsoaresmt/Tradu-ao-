@@ -453,75 +453,91 @@ def fit_text(draw, text, font_path, box_w, box_h, min_size=MIN_FONT_BASE, max_si
     return font, wrapped, bbox[2] - bbox[0], bbox[3] - bbox[1], spacing
 
 
-def fit_text_ellipse(draw, text, font_path, box_w, box_h,
-                     min_size=MIN_FONT_BASE, max_size=64, k=0.92):
-    """Lettering profissional: inscreve o texto na ELIPSE do balão. Cada linha é
-    centralizada e sua largura respeita a largura da elipse NAQUELA altura — gera
-    o formato oval (linhas curtas em cima/baixo, largas no meio), como nas scans
-    profissionais, e NUNCA encosta na borda. Retorna (font, wrapped, tw, th, spacing)
-    ou None se não couber de jeito nenhum (aí o chamador usa o encaixe retangular)."""
+def fit_text_mask(draw, text, font_path, mask, min_size=MIN_FONT_BASE, max_size=64, fill=0.92):
+    """Encaixa o texto na FORMA REAL do interior do balao — sem template
+    geometrico (oval/retangulo). 'mask' e um array 2D (uint8, 255 = area
+    aproveitavel) com o contorno EXATO daquele balao especifico (nuvem,
+    espetado, torto, redondo, o que for); cada linha respeita a largura
+    DISPONIVEL naquela faixa da mascara e e centralizada no centro daquela
+    faixa (que pode nao ser o centro da caixa, em formas assimetricas).
+    Retorna (font, linhas, spacing), onde linhas = [(texto, x_local, y_local), ...]
+    em coordenadas LOCAIS da mascara — ou None se a mascara for inutilizavel /
+    nada couber (chamador cai no fit_text retangular)."""
     from PIL import ImageFont
+    import numpy as np
+    h, w = mask.shape
+    rows = np.where(mask.any(axis=1))[0]
+    if rows.size == 0 or w < 8:
+        return None
+    top, bottom = int(rows[0]), int(rows[-1])
+    usable_h = bottom - top + 1
+    if usable_h < 8:
+        return None
     words = str(text).split()
     if not words:
-        return None
-    a = (box_w / 2.0) * k          # semi-eixo horizontal util
-    b = (box_h / 2.0) * k          # semi-eixo vertical util
-    if a < 4 or b < 4:
         return None
 
     floor = min(min_size, ABS_MIN_FONT)
     best_any = None
-    size = max(floor, min(int(box_h * 0.9), max_size))
+    size = max(floor, min(int(usable_h * 0.9), max_size))
     while size >= floor:
         font = ImageFont.truetype(font_path, size) if font_path else ImageFont.load_default()
         spacing = _line_spacing(size)
         pitch = size + spacing
-        max_lines = max(1, int((2 * b) // pitch))
+        max_lines = max(1, int(usable_h // pitch))
         for n in range(1, max_lines + 1):
             block_h = n * size + (n - 1) * spacing
-            if block_h > 2 * b:
+            if block_h > usable_h:
                 break
-            top = -block_h / 2.0
-            # largura util da elipse no centro vertical de cada linha
-            avail = []
+            row_top = top + (usable_h - block_h) // 2
+            # largura/centro DISPONIVEL na faixa de cada linha (forma real do balao)
+            spans = []
             for j in range(n):
-                yc = top + j * pitch + size / 2.0
-                r = 1.0 - (yc / b) ** 2
-                avail.append((2.0 * a * (r ** 0.5)) if r > 0 else 0.0)
-            # encaixe guloso respeitando o cap de largura de cada linha
+                yc = min(max(int(row_top + j * pitch + size / 2), top), bottom)
+                cols = np.where(mask[yc] > 0)[0]
+                spans.append((int(cols[0]), int(cols[-1])) if cols.size else None)
+            if any(s is None for s in spans):
+                continue
+            avail = [(b - a) * fill for a, b in spans]
+            centers = [(a + b) / 2.0 for a, b in spans]
+            # encaixe guloso respeitando a largura disponivel de cada linha
             lines = [""] * n
             idx = 0
             ok = True
-            for w in words:
+            for word in words:
                 if idx >= n:
                     ok = False
                     break
-                cand = (lines[idx] + " " + w).strip()
+                cand = (lines[idx] + " " + word).strip()
                 if font.getbbox(cand)[2] <= avail[idx]:
                     lines[idx] = cand
                 elif lines[idx]:
                     idx += 1
-                    if idx >= n or font.getbbox(w)[2] > avail[idx]:
+                    if idx >= n or font.getbbox(word)[2] > avail[idx]:
                         ok = False
                         break
-                    lines[idx] = w
+                    lines[idx] = word
                 else:
-                    ok = False  # palavra sozinha não cabe na linha estreita
+                    ok = False  # palavra sozinha nao cabe na faixa
                     break
             if ok and all(lines):   # usou exatamente as n linhas, todas cheias
-                wrapped = "\n".join(lines)
-                bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, align="center", spacing=spacing)
-                cand = (font, wrapped, bbox[2] - bbox[0], bbox[3] - bbox[1], spacing)
+                positions = []
+                for j, line in enumerate(lines):
+                    lw = font.getbbox(line)[2]
+                    positions.append((line, centers[j] - lw / 2.0, float(row_top + j * pitch)))
+                cand_result = (font, positions, spacing)
                 if not _has_orphan(lines):
-                    return cand                       # melhor caso: sem linha orfa
+                    return cand_result                # melhor caso: sem linha orfa
                 if best_any is None and size >= min_size:
-                    best_any = cand                   # orfa (ex.: 2 palavras) so ACIMA do piso
+                    best_any = cand_result             # orfa (ex.: 2 palavras) so ACIMA do piso
         size -= 1
     return best_any
 
 
-def bubble_inner_rect(crop_bgr):
-    """Acha a area branca interna do balao dentro do recorte (x,y,w,h) ou None."""
+def _bubble_interior_contour(crop_bgr):
+    """Acha o maior contorno da area BRANCA interna do balao no recorte. Retorna
+    (contour, w, h) ou None se nao houver area branca contigua suficiente
+    (balao colorido/efeito -> chamador usa fallback retangular)."""
     import cv2
     import numpy as np
     if crop_bgr is None or crop_bgr.size == 0:
@@ -539,7 +555,36 @@ def bubble_inner_rect(crop_bgr):
     c = max(cnts, key=cv2.contourArea)
     if cv2.contourArea(c) < 0.22 * w * h:
         return None  # pouca area branca -> balao colorido/efeito: usa fallback
+    return c, w, h
+
+
+def bubble_inner_rect(crop_bgr):
+    """Acha a area branca interna do balao dentro do recorte (x,y,w,h) ou None."""
+    import cv2
+    found = _bubble_interior_contour(crop_bgr)
+    if not found:
+        return None
+    c, _, _ = found
     return cv2.boundingRect(c)
+
+
+def bubble_interior_mask(crop_bgr):
+    """Mascara (uint8 0/255) com a FORMA EXATA do interior do balao no recorte —
+    nao um retangulo/oval aproximado. Cada balao (nuvem, espetado, redondo, etc.)
+    gera sua propria mascara, usada por fit_text_mask para encaixar o texto na
+    forma real DAQUELE balao. None se nao houver area branca contigua suficiente
+    (chamador cai no encaixe retangular)."""
+    import cv2
+    import numpy as np
+    found = _bubble_interior_contour(crop_bgr)
+    if not found:
+        return None
+    c, w, h = found
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.drawContours(mask, [c], -1, 255, thickness=cv2.FILLED)
+    margin = max(2, int(min(w, h) * 0.05))   # nao deixa o texto encostar na borda
+    mask = cv2.erode(mask, np.ones((margin, margin), np.uint8))
+    return mask if mask.any() else None
 
 
 def render_image(image_path, boxes, font_path, typeset=True, style_hint=None):
@@ -665,15 +710,21 @@ def render_image(image_path, boxes, font_path, typeset=True, style_hint=None):
         is_sfx = btype == "sfx"
         is_bubble = btype in ("fala", "pensamento")
         x1, y1, x2, y2 = px(box)
+        mask = None
         if is_sfx:
             ax1, ay1, aw, ah = x1, y1, (x2 - x1), (y2 - y1)
         else:
-            inner = bubble_inner_rect(img[y1:y2, x1:x2]) if box.get("coverOriginal") is not False else None
+            crop = img[y1:y2, x1:x2]
+            inner = bubble_inner_rect(crop) if box.get("coverOriginal") is not False else None
             if inner:
                 ix, iy, iw, ih = inner
                 ax1, ay1, aw, ah = x1 + ix, y1 + iy, iw, ih
             else:
                 ax1, ay1, aw, ah = x1, y1, (x2 - x1), (y2 - y1)
+            # mascara com o CONTORNO EXATO do interior do balao (nuvem, espetado,
+            # redondo...) — usada por fit_text_mask pra encaixar o texto na forma
+            # real DESTE balao, sem template geometrico.
+            mask = bubble_interior_mask(crop) if box.get("coverOriginal") is not False else None
         if aw < 8 or ah < 8:
             continue
         if btype == "grito":
@@ -689,6 +740,7 @@ def render_image(image_path, boxes, font_path, typeset=True, style_hint=None):
             "area": (ax1, ay1, aw, ah), "max_font": max_font, "fill": fill, "stroke_div": stroke_div,
             "orig_font": orig_font.get(id(box)),     # tamanho medido do texto original
             "orig_weight": orig_weight.get(id(box)), # peso (espessura do traco) do original
+            "mask": mask, "origin": (x1, y1),        # forma exata do balao + offset absoluto
         })
 
     # --- Pass 1: TAMANHO UNIFORME dos baloes de fala da pagina (estetica scan) ---
@@ -759,29 +811,58 @@ def render_image(image_path, boxes, font_path, typeset=True, style_hint=None):
         if hint_font and is_bubble and not manual:
             cap = max(cap, min(hint_font, max_font))
 
-        # Encaixe RETANGULAR centralizado (caixa de dialogo) — sem forcar oval.
-        method = "rect"
-        mfrac = 0.0 if is_sfx else (0.08 if is_bubble else 0.07)
-        mx, my = int(aw * mfrac), int(ah * mfrac)
-        fx1, fy1, fw, fh = ax1 + mx, ay1 + my, aw - 2 * mx, ah - 2 * my
-        res = fit_text(draw, text, font_path, fw, fh,
-                       min_size=min_font, max_size=cap, fill=fill)
+        # Encaixe na FORMA REAL do balao (mascara do contorno interno: nuvem,
+        # espetado, redondo...). Cada balao usa o PROPRIO contorno — sem template
+        # geometrico universal. So cai no retangulo se nao houver mascara ou se
+        # nada couber nela (balao colorido/efeito sem area branca contigua).
+        mask = it.get("mask")
+        mres = fit_text_mask(draw, text, font_path, mask,
+                              min_size=min_font, max_size=cap, fill=fill) if mask is not None else None
 
         # OCUPACAO (padrao de estudio): fala curta em balao grande ficava
         # minuscula porque o teto vinha do tamanho medido no ORIGINAL. Se o
         # bloco ficou ESPARSO (< 28% da altura util), deixa a fonte crescer
         # alem do original — com limite (x1.6) pra nao destoar da pagina.
-        if res and not manual:
-            _sz = getattr(res[0], "size", 0)
-            if res[3] < 0.28 * fh and _sz and _sz < max_font:
+        if mres and not manual:
+            _font0, _pos0, _sp0 = mres
+            _sz = getattr(_font0, "size", 0)
+            _block_h = _sz * len(_pos0) + _sp0 * (len(_pos0) - 1)
+            _rows = np.where(mask.any(axis=1))[0]
+            _usable_h = int(_rows[-1] - _rows[0] + 1) if _rows.size else 0
+            if _usable_h and _block_h < 0.28 * _usable_h and _sz and _sz < max_font:
                 boost = min(max_font, max(int(_sz * 1.6), _sz + 4))
-                res = fit_text(draw, text, font_path, fw, fh,
-                               min_size=min_font, max_size=boost, fill=fill)
+                mres = fit_text_mask(draw, text, font_path, mask,
+                                      min_size=min_font, max_size=boost, fill=fill) or mres
 
-        font, wrapped, tw, th, spacing = res
-        # centraliza o bloco na area (centro visual do balao)
-        tx = fx1 + (fw - tw) / 2
-        ty = fy1 + (fh - th) / 2
+        if mres:
+            method = "mask"
+            font, positions, spacing = mres
+            ox, oy = it["origin"]
+            mrows = np.where(mask.any(axis=1))[0]
+            mcols = np.where(mask.any(axis=0))[0]
+            fw, fh = int(mcols[-1] - mcols[0] + 1), int(mrows[-1] - mrows[0] + 1)
+            tw = max(font.getbbox(line)[2] for line, _, _ in positions)
+            th = font.size * len(positions) + spacing * (len(positions) - 1)
+            wrapped = "\n".join(line for line, _, _ in positions)
+        else:
+            # Fallback RETANGULAR centralizado (sem mascara / forma irregular nao coube).
+            method = "rect"
+            mfrac = 0.0 if is_sfx else (0.08 if is_bubble else 0.07)
+            mx, my = int(aw * mfrac), int(ah * mfrac)
+            fx1, fy1, fw, fh = ax1 + mx, ay1 + my, aw - 2 * mx, ah - 2 * my
+            res = fit_text(draw, text, font_path, fw, fh,
+                           min_size=min_font, max_size=cap, fill=fill)
+            if res and not manual:
+                _sz = getattr(res[0], "size", 0)
+                if res[3] < 0.28 * fh and _sz and _sz < max_font:
+                    boost = min(max_font, max(int(_sz * 1.6), _sz + 4))
+                    res = fit_text(draw, text, font_path, fw, fh,
+                                   min_size=min_font, max_size=boost, fill=fill)
+            font, wrapped, tw, th, spacing = res
+            # centraliza o bloco na area (centro visual do balao)
+            tx = fx1 + (fw - tw) / 2
+            ty = fy1 + (fh - th) / 2
+
         # GROSSURA (faux-bold) CONTROLAVEL. SFX/grito = contorno BRANCO (le sobre a
         # arte). Balao de fala = faux-bold PRETO: 1) box.fontWeight (humano manda, em
         # px) tem prioridade; 2) senao auto SUTIL — so engrossa um tico se o lettering
@@ -798,8 +879,13 @@ def render_image(image_path, boxes, font_path, typeset=True, style_hint=None):
                 sw = 1 if weight >= 0.13 else 0           # auto sutil (so original encorpado)
             sw = min(sw, max(1, fsize // 8))              # teto anti-borrao
             stroke_fill = "black"
-        draw.multiline_text((tx, ty), wrapped, font=font, fill="black",
-                            align="center", spacing=spacing, stroke_width=sw, stroke_fill=stroke_fill)
+        if method == "mask":
+            for line, lx, ly in positions:
+                draw.text((ox + lx, oy + ly), line, font=font, fill="black",
+                          stroke_width=sw, stroke_fill=stroke_fill)
+        else:
+            draw.multiline_text((tx, ty), wrapped, font=font, fill="black",
+                                align="center", spacing=spacing, stroke_width=sw, stroke_fill=stroke_fill)
         rendered += 1
         # estatistica visual da pagina (so baloes de fala -> memoria de estilo da obra)
         if is_bubble and fsize:
