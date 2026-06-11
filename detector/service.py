@@ -580,16 +580,21 @@ def render_image(image_path, boxes, font_path, typeset=True, style_hint=None):
         x1, y1, x2, y2 = px(box)
         if x2 <= x1 or y2 <= y1:
             continue
-        # AREA BRANCA INTERNA do balao. Se NAO houver (balao colorido, texto sobre
-        # arte, ou caixa que nao e balao de fala): NAO arrisca -> pula, deixa o
-        # original intacto. Isso impede apagar SFX/cenario/texto fora de balao.
+        # AREA BRANCA INTERNA do balao. Quando NAO ha uma area branca grande/limpa
+        # (balao ESPETADO/grito, recorte irregular), NAO pula: usa a caixa toda com
+        # recuo pequeno. A intersecao com o INTERIOR BRANCO (mais abaixo) garante
+        # cobrir SO o texto sobre branco — entao SFX/cenario/arte escura ficam de
+        # fora de qualquer jeito. Antes pulava aqui e o ingles dos baloes de grito
+        # NAO era apagado (texto EN aparecia sob a traducao).
         inner = bubble_inner_rect(img[y1:y2, x1:x2])
-        if not inner:
-            continue
-        ix, iy, iw, ih = inner
-        pad = max(2, int(min(iw, ih) * 0.07))   # recuo: protege o anel/borda do balao
-        rx1, ry1 = x1 + ix + pad, y1 + iy + pad
-        rx2, ry2 = x1 + ix + iw - pad, y1 + iy + ih - pad
+        if inner:
+            ix, iy, iw, ih = inner
+            pad = max(2, int(min(iw, ih) * 0.07))   # recuo: protege o anel/borda do balao
+            rx1, ry1 = x1 + ix + pad, y1 + iy + pad
+            rx2, ry2 = x1 + ix + iw - pad, y1 + iy + ih - pad
+        else:
+            pad_x, pad_y = int((x2 - x1) * 0.06), int((y2 - y1) * 0.06)
+            rx1, ry1, rx2, ry2 = x1 + pad_x, y1 + pad_y, x2 - pad_x, y2 - pad_y
         if rx2 - rx1 < 4 or ry2 - ry1 < 4:
             continue
         crop = img[ry1:ry2, rx1:rx2]            # VIEW de img -> alteracoes valem in-place
