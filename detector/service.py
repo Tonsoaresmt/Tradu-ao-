@@ -702,6 +702,12 @@ def render_image(image_path, boxes, font_path, typeset=True, style_hint=None):
             # BLOB GRANDE = arte/silhueta de personagem invadindo o balao -> PRESERVA.
             if cw > mw * 0.62 or ch > mh * 0.62 or area > 0.16 * mw * mh:
                 continue
+            # BLOB ENCOSTANDO NA BORDA do recorte interno = canto "cortado" do
+            # balao (octogono/espetado) ou fundo escuro vazando pro recorte —
+            # texto de verdade fica centralizado, com folga da borda. Pintar
+            # esses cantos de branco distorce a forma original do balao.
+            if cx <= 0 or cy <= 0 or cx + cw >= mw or cy + ch >= mh:
+                continue
             text_mask[labels == i] = 255
             if ch >= 4 and ch < mh * 0.5:        # altura de letra plausivel
                 letter_h.append(ch)
