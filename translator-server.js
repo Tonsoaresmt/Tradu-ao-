@@ -5,6 +5,7 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "fs-extra";
 import extractZip from "extract-zip";
+import { endsMidWord, looksTruncated } from "./translator-ui/text-checks.js";
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
@@ -593,6 +594,9 @@ function stripThink(value) {
     .trim();
 }
 
+// endsMidWord/looksTruncated importados de translator-ui/text-checks.js
+// (compartilhados com o editor, que usa o mesmo heuristico no badge de aviso).
+
 function parseTesseractTsv(tsv) {
   const rows = String(tsv || "").trim().split(/\r?\n/);
   const headers = rows.shift()?.split("\t") || [];
@@ -841,6 +845,44 @@ function alnumKey(text) {
   return cleanOcrText(text).toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+// Conjunto de palavras (2+ letras) p/ comparar duas frases por sobreposicao.
+function wordSet(text) {
+  return new Set(memoryKey(text).split(/\s+/).filter((w) => w.length > 1));
+}
+
+// Distancia de edicao (Levenshtein) entre duas strings.
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  const al = a.length, bl = b.length;
+  if (!al) return bl;
+  if (!bl) return al;
+  let prev = new Array(bl + 1);
+  for (let j = 0; j <= bl; j++) prev[j] = j;
+  for (let i = 1; i <= al; i++) {
+    const cur = new Array(bl + 1);
+    cur[0] = i;
+    for (let j = 1; j <= bl; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    prev = cur;
+  }
+  return prev[bl];
+}
+
+// Similaridade 0..1 (1 = identico) normalizada pelo tamanho da maior string.
+function similarity(a, b) {
+  const maxLen = Math.max(a.length, b.length);
+  if (!maxLen) return 1;
+  return 1 - levenshtein(a, b) / maxLen;
+}
+
+// Quao parecidas duas falas precisam ser (apos alnumKey) p/ contar como "o
+// mesmo padrao" (mesma frase, OCR leu diferente: REUBEN/REUBEM, 0/O, etc.).
+// 0.8 cobre 1 letra trocada em palavras curtas (ex.: "reuben"/"reubem" = 0.83)
+// sem casar palavras realmente diferentes ("stop"/"step" = 0.75 fica de fora).
+const FUZZY_MEMORY_THRESHOLD = 0.8;
+
 function exampleKey(example) {
   return [
     memoryKey(example.manga),
@@ -920,7 +962,22 @@ async function recordTrainingExamples(project) {
         updatedAt: new Date().toISOString()
       };
 
-      byKey.set(exampleKey(example), example);
+      // Mesma fala que o OCR leu um pouco diferente em outra pagina/capitulo
+      // (REUBEN/REUBEM, pontuacao, letra a mais) -> ATUALIZA o exemplo existente
+      // em vez de empilhar quase-duplicatas (memoria fica enxuta = casa melhor).
+      let key = exampleKey(example);
+      if (!byKey.has(key)) {
+        const alnum = alnumKey(originalText);
+        for (const [existingKey, existing] of byKey) {
+          if (memoryKey(existing.manga) !== memoryKey(example.manga)) continue;
+          if (similarity(alnum, alnumKey(existing.originalText)) >= FUZZY_MEMORY_THRESHOLD) {
+            key = existingKey;
+            break;
+          }
+        }
+      }
+
+      byKey.set(key, example);
       addedOrUpdated++;
     }
   }
@@ -1118,13 +1175,21 @@ async function charactersForManga(manga) {
 }
 
 function scoreExample(example, text, context = {}) {
-  const words = new Set(memoryKey(text).split(/\s+/).filter((word) => word.length > 2));
-  const exampleWords = new Set(memoryKey(example.originalText).split(/\s+/).filter((word) => word.length > 2));
-  let score = 0;
-
+  const words = wordSet(text);
+  const exampleWords = wordSet(example.originalText);
+  let overlap = 0;
   for (const word of words) {
-    if (exampleWords.has(word)) score += 2;
+    if (exampleWords.has(word)) overlap++;
   }
+  // Sobreposicao NORMALIZADA (Jaccard): uma frase curta quase IDENTICA pesa mais
+  // que um exemplo longo que so compartilha umas poucas palavras incidentais.
+  const union = words.size + exampleWords.size - overlap;
+  let score = union ? (overlap / union) * 10 : 0;
+
+  // Quase-duplicata (mesma fala, OCR leu um pouco diferente): e o "esse padrao
+  // ja foi corrigido antes" mais forte -> empurra pro topo do contexto da IA.
+  const sim = similarity(alnumKey(text), alnumKey(example.originalText));
+  if (sim >= FUZZY_MEMORY_THRESHOLD) score += 8;
 
   if (memoryKey(context.manga) && memoryKey(context.manga) === memoryKey(example.manga)) score += 3;
   if (memoryKey(context.chapter) && memoryKey(context.chapter) === memoryKey(example.chapter)) score += 1;
@@ -1135,6 +1200,9 @@ function scoreExample(example, text, context = {}) {
 async function findRelevantTrainingExamples(text, context = {}, limit = 6) {
   const examples = await loadTrainingExamples();
   return examples
+    // Exemplo com traducao cortada no meio da palavra: nao usa como
+    // referencia p/ IA, senao ela "aprende" a repetir o corte.
+    .filter((example) => !endsMidWord(cleanOcrText(example.translatedText)))
     .map((example) => ({
       example,
       score: scoreExample(example, text, context)
@@ -1163,6 +1231,10 @@ async function getMemoryIndex() {
     // Gate: so reusa traducao vetada por humano (quality_score do onyx).
     // Exemplos antigos (sem o campo) sao tratados como confiaveis.
     if (example.quality && example.quality !== "human") continue;
+    // Traducao salva CORTADA no meio da palavra: nunca reusa como memoria,
+    // mesmo marcada "human" -- senao essa fala fica presa devolvendo sempre
+    // o mesmo pedaco incompleto, mesmo apos a IA aprender a completar.
+    if (endsMidWord(translatedText)) continue;
 
     const exact = memoryKey(example.originalText);
     if (exact && !byExact.has(exact)) byExact.set(exact, translatedText);
@@ -1183,7 +1255,24 @@ async function findTranslationMemory(text) {
 
   // Fuzzy leve: ignora pontuacao/ruido do OCR (REUBEN? casa com REUBEN).
   const alnum = alnumKey(text);
-  if (alnum && index.byAlnum.has(alnum)) return index.byAlnum.get(alnum);
+  if (!alnum) return null;
+  if (index.byAlnum.has(alnum)) return index.byAlnum.get(alnum);
+
+  // Fuzzy por similaridade de caracteres: pega variacoes de OCR no MEIO da
+  // frase (REUBEN/REUBEM, 0/O, letra a mais/a menos) que o alnumKey exato nao
+  // casa. So aceita textos de tamanho parecido e MUITO proximos, senao corre
+  // o risco de devolver a traducao de uma frase diferente.
+  if (alnum.length >= 4) {
+    let best = null;
+    for (const [otherAlnum, translatedText] of index.byAlnum) {
+      if (Math.abs(otherAlnum.length - alnum.length) > Math.max(2, alnum.length * 0.2)) continue;
+      const sim = similarity(alnum, otherAlnum);
+      if (sim >= FUZZY_MEMORY_THRESHOLD && (!best || sim > best.sim)) {
+        best = { sim, translatedText };
+      }
+    }
+    if (best) return best.translatedText;
+  }
 
   return null;
 }
@@ -1374,9 +1463,34 @@ async function translateWithOllama(text, context = {}) {
   }
 
   const data = await response.json();
+  let translated = cleanOcrText(stripThink(data.response || ""));
+
+  if (looksTruncated(text, translated)) {
+    // a IA parou no meio da frase: tenta mais uma vez pedindo o final completo
+    const retryResponse = await fetch(`${OLLAMA_URL}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(30000),
+      body: JSON.stringify({
+        model,
+        system: systemPrompt,
+        prompt: `${prompt}\n\n(A resposta anterior ficou incompleta, parou no meio da frase. Traduza a fala INTEIRA, do começo ao fim, com a pontuação final.)`,
+        stream: false,
+        think: false,
+        options: { temperature: 0.2, num_ctx: OLLAMA_NUM_CTX }
+      })
+    });
+    if (retryResponse.ok) {
+      const retryData = await retryResponse.json();
+      const retryText = cleanOcrText(stripThink(retryData.response || ""));
+      if (retryText) translated = retryText;
+    }
+    if (looksTruncated(text, translated)) return null; // continua cortada -> proximo provedor da cadeia
+  }
+
   return {
     provider: `ollama:${model}`,
-    text: cleanOcrText(stripThink(data.response || ""))
+    text: translated
   };
 }
 
@@ -1471,7 +1585,10 @@ async function translateBatchWithOllama(texts, context = {}) {
   const parsed = parseNumberedList(stripThink(data.response || ""), idxs.length);
   const out = cleaned.map(() => "");
   idxs.forEach((origIdx, k) => {
-    if (parsed[k]) out[origIdx] = cleanOcrText(parsed[k]);
+    const candidate = parsed[k] && cleanOcrText(parsed[k]);
+    // frase cortada no lote: deixa vazio p/ cair no item-a-item (que tenta de
+    // novo sozinho, com mais foco, e troca de provedor se continuar cortada)
+    if (candidate && !looksTruncated(cleaned[origIdx], candidate)) out[origIdx] = candidate;
   });
   return { provider: `ollama:${model}`, texts: out };
 }
@@ -1726,7 +1843,9 @@ async function reviewBatchWithOllama(items, context = {}) {
   const parsed = parseNumberedList(stripThink(data.response || ""), valid.length);
   return valid.map((it, k) => {
     const fin = cleanOcrText(parsed[k] || "");
-    return { id: it.id, final: fin || it.draft };   // se vier vazio, mantem o rascunho
+    // se vier vazio OU cortado no meio da frase, mantem o rascunho (que ja estava completo)
+    const useFinal = fin && !looksTruncated(it.draft, fin);
+    return { id: it.id, final: useFinal ? fin : it.draft };
   });
 }
 

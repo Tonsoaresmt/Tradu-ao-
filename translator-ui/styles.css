@@ -534,6 +534,14 @@ body.lib-open .sidebar {
 }
 .fala-chip .conf-dot { box-shadow: none; }
 
+/* Aviso de traducao com cara de cortada (parou no meio da palavra). */
+.fala-chip.truncated { box-shadow: inset 3px 0 0 #f39c12; }
+.fala-chip .chip-warn {
+  color: #f39c12;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
 .empty-list {
   padding: 12px;
   border: 1px dashed var(--panel-border);

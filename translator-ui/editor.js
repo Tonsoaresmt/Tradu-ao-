@@ -1,6 +1,7 @@
 // Núcleo do editor: leitura de estado das páginas/caixas, renderização do
 // visualizador, da lista de falas e do formulário, e manipulação das caixas.
 import { state, elements, clamp, makeId } from "./state.js";
+import { looksTruncated } from "./text-checks.js";
 
 // Auto-ajuste da fonte no editor: encolhe o texto ate caber no balao (igual ao
 // resultado final), pra dar pra ler na hora em vez de cortar.
@@ -194,9 +195,16 @@ export function renderTranslationList() {
     chip.className = "fala-chip";
     if (box.id === state.selectedBoxId) chip.classList.add("selected");
     chip.classList.add(trans ? "done" : "pending");
+
+    // Traducao com cara de CORTADA (parou no meio da palavra, sem pontuacao
+    // final) -- avisa na grade pra revisar sem precisar abrir cada balao.
+    const truncated = Boolean(trans) && looksTruncated(orig, trans);
+    if (truncated) chip.classList.add("truncated");
+
     chip.title = orig
       ? (trans ? `${orig}\n→ ${trans}` : `${orig}\n(sem traducao ainda)`)
       : "Caixa manual (sem texto detectado)";
+    if (truncated) chip.title += "\n⚠ traducao parece cortada no meio da frase";
 
     const num = document.createElement("span");
     num.className = "chip-num";
@@ -209,6 +217,15 @@ export function renderTranslationList() {
       : "Caixa manual";
 
     chip.append(num, dot);
+
+    if (truncated) {
+      const warn = document.createElement("span");
+      warn.className = "chip-warn";
+      warn.textContent = "⚠";
+      warn.title = "Traducao parece cortada no meio da frase";
+      chip.append(warn);
+    }
+
     chip.addEventListener("click", () => selectBox(box.id));
     elements.translationList.appendChild(chip);
   }
