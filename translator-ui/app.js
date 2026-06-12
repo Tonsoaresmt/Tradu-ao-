@@ -26,6 +26,7 @@ import { previewPage } from "./preview.js";
 import { exportChapter, preprocessChapter } from "./export.js";
 import { initAutosave } from "./autosave.js";
 import { initReference } from "./reference.js";
+import { initTrainingPanel } from "./training-panel.js";
 
 function toggleReading() {
   state.reading = !state.reading;
@@ -377,6 +378,7 @@ wireEvents();
 loadLibrary();
 initAutosave();
 initReference();
+initTrainingPanel();
 setLibOpen(true);   // começa aberta: o 1º passo é escolher a obra
 
 // O detector sobe sob demanda e a 1a vez demora (carrega YOLO + EasyOCR). A barra

@@ -966,6 +966,38 @@ body:not(.view-original) #orig-stage { display: none; }
 .atalhos-grid { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; line-height: 1.35; }
 .atalhos-grid b { color: var(--ink); font-weight: 700; }
 
+/* ===== Painel "Memória & Glossário" (barra lateral) ===== */
+.training-panel { margin-top: 18px; }
+.training-panel p { margin: 0; line-height: 1.4; }
+.kv-title { margin: 10px 0 6px; font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.kv-list { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; padding-right: 2px; margin-bottom: 6px; }
+.kv-row { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 6px; align-items: center; }
+.kv-row-voice { grid-template-columns: 1fr 1.6fr auto; }
+.kv-row input {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  color: var(--ink);
+  padding: 5px 8px;
+  font-size: 0.8rem;
+  min-width: 0;
+}
+.kv-row .kv-note { font-size: 0.75rem; color: var(--muted); }
+.kv-row .ghost-button.danger { padding: 2px 7px; }
+
+.memory-issues { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; max-height: 320px; overflow-y: auto; }
+.memory-issue {
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.memory-issue-text { font-size: 0.8rem; line-height: 1.35; word-break: break-word; }
+.memory-issue-bad { color: #f39c12; }
+.memory-issue .ghost-button { align-self: flex-start; }
+
 @media (max-width: 1280px) {
   .app-shell { grid-template-columns: 46px minmax(0, 1fr) 300px; }
 }

@@ -47,6 +47,53 @@
             <pre id="profile-text" class="profile-text"></pre>
           </details>
         </section>
+
+        <section class="panel training-panel">
+          <div class="panel-header">
+            <h2>Memória &amp; Glossário</h2>
+          </div>
+
+          <details class="details-panel">
+            <summary>Limpeza de memória</summary>
+            <p class="muted small">Verifica a memória de traduções (todas as obras) por exemplos com tradução cortada no meio da palavra.</p>
+            <div id="memory-status" class="status small">—</div>
+            <div id="memory-issues" class="memory-issues"></div>
+            <div class="reference-actions">
+              <button id="memory-check" class="ghost-button small" type="button">Verificar memória</button>
+              <button id="memory-remove-all" class="ghost-button danger small" type="button" hidden>Remover todos</button>
+            </div>
+          </details>
+
+          <details class="details-panel">
+            <summary>Glossário</summary>
+            <p class="muted small">Termos fixos (nomes, gírias...) que a IA deve sempre usar nesta tradução.</p>
+            <h4 class="kv-title">Global (todas as obras)</h4>
+            <div id="glossary-global-list" class="kv-list"></div>
+            <button id="glossary-global-add" class="ghost-button tiny" type="button">+ termo</button>
+            <h4 id="glossary-obra-title" class="kv-title">Desta obra</h4>
+            <div id="glossary-obra-list" class="kv-list"></div>
+            <button id="glossary-obra-add" class="ghost-button tiny" type="button">+ termo</button>
+            <div class="reference-actions">
+              <button id="glossary-save" class="ghost-button small" type="button">Salvar glossário</button>
+              <span id="glossary-status" class="muted small"></span>
+            </div>
+          </details>
+
+          <details class="details-panel">
+            <summary>Personagens (voz)</summary>
+            <p class="muted small">Descreva como cada personagem fala — a IA aplica esse tom na tradução.</p>
+            <h4 class="kv-title">Global</h4>
+            <div id="characters-global-list" class="kv-list"></div>
+            <button id="characters-global-add" class="ghost-button tiny" type="button">+ personagem</button>
+            <h4 id="characters-obra-title" class="kv-title">Desta obra</h4>
+            <div id="characters-obra-list" class="kv-list"></div>
+            <button id="characters-obra-add" class="ghost-button tiny" type="button">+ personagem</button>
+            <div class="reference-actions">
+              <button id="characters-save" class="ghost-button small" type="button">Salvar personagens</button>
+              <span id="characters-status" class="muted small"></span>
+            </div>
+          </details>
+        </section>
       </aside>
 
       <main class="workspace">

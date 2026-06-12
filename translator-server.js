@@ -2064,6 +2064,101 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Relatorio de memoria poluida: exemplos cuja traducao termina cortada no
+    // meio da palavra (mesmo criterio do badge ⚠ na bancada), em TODAS as obras.
+    if (req.method === "GET" && url.pathname === "/api/training-issues") {
+      const examples = await loadTrainingExamples();
+      const issues = examples
+        .filter((example) => endsMidWord(cleanOcrText(example.translatedText)))
+        .map((example) => ({
+          key: exampleKey(example),
+          manga: example.manga,
+          chapter: example.chapter,
+          page: example.page,
+          originalText: example.originalText,
+          translatedText: example.translatedText
+        }));
+      sendJson(res, 200, { total: examples.length, issues });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/training-issues/remove") {
+      const body = await readJsonBody(req);
+      const keys = new Set((Array.isArray(body.keys) ? body.keys : []).map(String));
+      const examples = await loadTrainingExamples();
+      const kept = examples.filter((example) => !keys.has(exampleKey(example)));
+      await saveTrainingExamples(kept);
+      memoryIndexCache.mtime = -1; // forca reconstrucao do indice em memoria
+      sendJson(res, 200, { removed: examples.length - kept.length, remaining: kept.length });
+      return;
+    }
+
+    // Glossario (#3): termos globais + por obra. Editavel pela UI.
+    if (req.method === "GET" && url.pathname === "/api/glossary") {
+      sendJson(res, 200, await loadGlossaryRaw());
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/glossary") {
+      const body = await readJsonBody(req);
+      const cleanTerms = (list) => (Array.isArray(list) ? list : [])
+        .map((item) => ({
+          source: String(item?.source || "").trim(),
+          target: String(item?.target || "").trim(),
+          note: String(item?.note || "").trim()
+        }))
+        .filter((item) => item.source && item.target);
+
+      const terms = cleanTerms(body.terms);
+      const porObra = {};
+      if (body.porObra && typeof body.porObra === "object") {
+        for (const [obra, list] of Object.entries(body.porObra)) {
+          const cleaned = cleanTerms(list);
+          if (cleaned.length) porObra[obra] = cleaned;
+        }
+      }
+      await fs.writeJson(TRAINING_GLOSSARY_PATH, { terms, porObra }, { spaces: 2 });
+      sendJson(res, 200, { terms, porObra });
+      return;
+    }
+
+    // Personagens/voz (#3): perfis globais + por obra. Editavel pela UI.
+    if (req.method === "GET" && url.pathname === "/api/characters") {
+      const data = await fs.readJson(TRAINING_CHARACTERS_PATH).catch(() => ({ global: {}, porObra: {} }));
+      sendJson(res, 200, {
+        global: data.global && typeof data.global === "object" ? data.global : {},
+        porObra: data.porObra && typeof data.porObra === "object" ? data.porObra : {}
+      });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/characters") {
+      const body = await readJsonBody(req);
+      const cleanVoices = (obj) => {
+        const out = {};
+        if (obj && typeof obj === "object") {
+          for (const [name, voice] of Object.entries(obj)) {
+            const n = String(name || "").trim();
+            const v = String(voice || "").trim();
+            if (n && v) out[n] = v;
+          }
+        }
+        return out;
+      };
+
+      const global = cleanVoices(body.global);
+      const porObra = {};
+      if (body.porObra && typeof body.porObra === "object") {
+        for (const [obra, profiles] of Object.entries(body.porObra)) {
+          const cleaned = cleanVoices(profiles);
+          if (Object.keys(cleaned).length) porObra[obra] = cleaned;
+        }
+      }
+      await fs.writeJson(TRAINING_CHARACTERS_PATH, { global, porObra }, { spaces: 2 });
+      sendJson(res, 200, { global, porObra });
+      return;
+    }
+
     if (req.method === "GET" && url.pathname === "/api/page") {
       const manga = url.searchParams.get("manga") || "";
       const chapter = url.searchParams.get("chapter") || "";
