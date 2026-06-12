@@ -40,6 +40,7 @@ export const elements = {
   profileDetails: document.querySelector("#profile-details"),
   profileText: document.querySelector("#profile-text"),
   referenceStatus: document.querySelector("#reference-status"),
+  referenceHint: document.querySelector("#reference-hint"),
   referenceFile: document.querySelector("#reference-file"),
   referenceUpload: document.querySelector("#reference-upload"),
   learnStyle: document.querySelector("#learn-style"),

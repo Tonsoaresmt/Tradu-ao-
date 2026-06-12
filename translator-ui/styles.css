@@ -953,6 +953,8 @@ body:not(.view-original) #orig-stage { display: none; }
 .reference-panel { margin-top: 18px; }
 .reference-panel p { margin: 0; line-height: 1.4; }
 .reference-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.reference-hint { margin: 0; line-height: 1.4; }
+.reference-hint.accent { color: #6ee7d7; font-weight: 600; }
 .profile-text {
   margin: 8px 0 0;
   white-space: pre-wrap;

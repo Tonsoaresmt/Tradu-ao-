@@ -9,23 +9,47 @@ function setRefStatus(text) {
   if (elements.referenceStatus) elements.referenceStatus.textContent = text;
 }
 
+// Dica de proxima acao: explica o que o botao "Aprender estilo" vai FAZER
+// (quantas paginas vai analisar) e se vale clicar de novo (mais paginas
+// disponiveis do que as usadas no perfil atual).
+function updateReferenceHint(data) {
+  const hint = elements.referenceHint;
+  if (!hint) return;
+  const available = data.pages || 0;
+  const wouldSample = Math.min(data.maxPages || 60, available);
+  const learned = data.learnedPages || 0;
+
+  if (!available) {
+    hint.hidden = true;
+    return;
+  }
+  hint.hidden = false;
+  hint.classList.remove("accent");
+  if (!data.profile) {
+    hint.textContent = `"Aprender estilo" vai analisar ${wouldSample} de ${available} página(s) e criar o perfil.`;
+  } else if (wouldSample > learned) {
+    hint.textContent = `Perfil atual usa ${learned} de ${available} página(s). Clique em "Aprender estilo" para refazer usando ${wouldSample}.`;
+    hint.classList.add("accent");
+  } else {
+    hint.textContent = `Perfil já usa a amostra máxima atual (${learned} de ${available} página(s)).`;
+  }
+}
+
 export async function refreshReferenceInfo() {
   const manga = state.selectedManga;
   if (!manga) {
     setRefStatus("Abra um capítulo primeiro.");
+    if (elements.referenceHint) elements.referenceHint.hidden = true;
     return;
   }
   try {
     const res = await fetch(`/api/reference?manga=${encodeURIComponent(manga)}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error || "erro");
-    const ref = data.pages
-      ? `${data.pages} pág(s) de referência`
-      : "sem referência ainda";
-    const perfil = data.profile
-      ? ` · perfil aprendido ✓ (${data.learnedPages} págs)`
-      : " · perfil: —";
-    setRefStatus(`${manga}: ${ref}${perfil}`);
+    setRefStatus(data.pages
+      ? `${manga}: ${data.pages} página(s) de referência enviada(s).`
+      : `${manga}: sem referência ainda — envie o CBZ/imagens da tradução profissional.`);
+    updateReferenceHint(data);
     // Relatório de aprendizado: mostra O QUE a IA destilou da referência.
     if (elements.profileDetails && elements.profileText) {
       const temVisual = data.visual && data.visual.fontFrac;
@@ -90,7 +114,7 @@ async function learnStyleNow() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-    setRefStatus(`Aprendendo o estilo (${data.pages} págs de referência)...`);
+    setRefStatus(`Analisando ${data.samplePages} de ${data.pages} página(s) de referência...`);
     // poll do job até terminar
     for (;;) {
       await new Promise((r) => setTimeout(r, 4000));

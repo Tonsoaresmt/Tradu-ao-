@@ -29,6 +29,9 @@ const TRAINING_STYLE_PATH = path.join(TRAINING_DIR, "estilo.txt");
 const TRAINING_STYLES_PATH = path.join(TRAINING_DIR, "estilos-obras.json");
 // Páginas da tradução PROFISSIONAL de referência, por obra (upload pela UI).
 const REFERENCES_DIR = path.join(TRANSLATOR_ROOT_DIR, "referencias");
+// Quantas paginas de referencia o "Aprender estilo" analisa por vez (amostra
+// espalhada). Exposto em /api/reference p/ a UI explicar o que o botao faz.
+const LEARN_STYLE_MAX_PAGES = 60;
 const PUBLIC_DIR = path.join(__dirname, "translator-ui");
 const WINDOWS_OCR_SCRIPT = path.join(__dirname, "tools", "windows-ocr.ps1");
 const OCR_COMMAND = process.env.TESSERACT_PATH || "tesseract";
@@ -1051,9 +1054,8 @@ function referenceDir(manga) {
 // (tom, honoríficos, terminologia, vozes) migra para o prompt da obra.
 async function learnStyleFromReference(job, manga, pages) {
   try {
-    const MAX_PAGES = 60;                  // amostra espalhada cobre varios capitulos sem demorar demais
-    const step = Math.max(1, Math.floor(pages.length / MAX_PAGES));
-    const sample = pages.filter((_, i) => i % step === 0).slice(0, MAX_PAGES);
+    const step = Math.max(1, Math.floor(pages.length / LEARN_STYLE_MAX_PAGES));
+    const sample = pages.filter((_, i) => i % step === 0).slice(0, LEARN_STYLE_MAX_PAGES);
     job.total = sample.length + 1;         // +1 = etapa de análise da IA
     const corpus = [];
     await ensureDetector();
@@ -2454,6 +2456,8 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, {
         ok: true,
         pages: pages.length,
+        maxPages: LEARN_STYLE_MAX_PAGES,
+        samplePages: Math.min(LEARN_STYLE_MAX_PAGES, pages.length),
         profile: entry?.[1]?.perfil || "",
         learnedPages: entry?.[1]?.paginas || 0,
         learnedFalas: entry?.[1]?.falas || 0,
@@ -2531,7 +2535,12 @@ const server = http.createServer(async (req, res) => {
       const pages = rel.map((p) => path.join(dir, p));
       const job = createJob("learn-style", { manga });
       learnStyleFromReference(job, manga, pages); // roda em background
-      sendJson(res, 200, { ok: true, jobId: job.id, pages: pages.length });
+      sendJson(res, 200, {
+        ok: true,
+        jobId: job.id,
+        pages: pages.length,
+        samplePages: Math.min(LEARN_STYLE_MAX_PAGES, pages.length)
+      });
       return;
     }
 
