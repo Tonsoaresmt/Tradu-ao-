@@ -1051,7 +1051,7 @@ function referenceDir(manga) {
 // (tom, honoríficos, terminologia, vozes) migra para o prompt da obra.
 async function learnStyleFromReference(job, manga, pages) {
   try {
-    const MAX_PAGES = 16;                  // amostra espalhada cobre a obra sem demorar
+    const MAX_PAGES = 60;                  // amostra espalhada cobre varios capitulos sem demorar demais
     const step = Math.max(1, Math.floor(pages.length / MAX_PAGES));
     const sample = pages.filter((_, i) => i % step === 0).slice(0, MAX_PAGES);
     job.total = sample.length + 1;         // +1 = etapa de análise da IA
@@ -1099,7 +1099,7 @@ async function learnStyleFromReference(job, manga, pages) {
 async function distillStyleWithOllama(manga, corpus) {
   const model = await getReviewerModel();   // usa o modelo mais capaz disponível
   if (!model) return "";
-  const sample = corpus.slice(0, 220).join("\n");
+  const sample = corpus.slice(0, 320).join("\n");
   const system = [
     "Você é editor-chefe de scanlation PT-BR. Vai receber falas extraídas por OCR (com pequenos erros)",
     `da tradução PROFISSIONAL da obra "${manga}". Escreva um PERFIL DE ESTILO curto para os tradutores`,
