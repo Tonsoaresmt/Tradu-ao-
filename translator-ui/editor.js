@@ -151,6 +151,23 @@ export function renderPageList() {
     button.className = "page-button";
     button.textContent = page.name;
 
+    // Sinaliza pendencias da pagina na tira, pra revisar sem abrir cada uma:
+    // ⚠ = alguma fala parece cortada; cinza = alguma fala ainda sem traducao.
+    const boxes = state.project.pages[page.name]?.boxes || [];
+    const hasTruncated = boxes.some((box) => box.translatedText && looksTruncated(box.originalText, box.translatedText));
+    const hasPending = boxes.some((box) => !String(box.translatedText || "").trim());
+    if (hasTruncated) {
+      button.classList.add("page-warn");
+      button.title = "Tem fala com traducao cortada — revisar";
+      const warn = document.createElement("span");
+      warn.className = "page-warn-icon";
+      warn.textContent = " ⚠";
+      button.append(warn);
+    } else if (hasPending) {
+      button.classList.add("page-pending");
+      button.title = "Tem fala sem traducao ainda";
+    }
+
     if (getCurrentPage()?.name === page.name) {
       button.classList.add("active");
     }

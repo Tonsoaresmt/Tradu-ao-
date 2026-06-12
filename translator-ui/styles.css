@@ -542,6 +542,11 @@ body.lib-open .sidebar {
   line-height: 1;
 }
 
+/* Tira de paginas: sinaliza pendencias sem precisar abrir cada pagina. */
+.page-button.page-warn { box-shadow: inset 3px 0 0 #f39c12; }
+.page-button.page-pending { box-shadow: inset 3px 0 0 #7f8c8d; }
+.page-button .page-warn-icon { color: #f39c12; }
+
 .empty-list {
   padding: 12px;
   border: 1px dashed var(--panel-border);
